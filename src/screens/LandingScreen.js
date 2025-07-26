@@ -8,26 +8,47 @@ import {
   Dimensions,
   Animated,
   Image,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from "../constants/theme";
+import { AuthService } from "../services/AuthService";
 
 const { width, height } = Dimensions.get("window");
 
 export default function LandingScreen({ navigation }) {
   const [showAuthOptions, setShowAuthOptions] = useState(false);
+  const [showTapHint, setShowTapHint] = useState(false);
   const logoTranslateY = new Animated.Value(0);
   const authOptionsOpacity = new Animated.Value(0);
   const authOptionsTranslateY = new Animated.Value(50);
 
   useEffect(() => {
-    // Show logo and brand name for 1 second, then start transition
+    // Show logo and brand name for 500ms, then start transition
     const timer = setTimeout(() => {
       startTransition();
-    }, 1000);
+    }, 500);
 
-    return () => clearTimeout(timer);
-  }, []);
+    // Fallback: ensure auth options show after 2 seconds regardless
+    const fallbackTimer = setTimeout(() => {
+      if (!showAuthOptions) {
+        setShowAuthOptions(true);
+      }
+    }, 2000);
+
+    // Show tap hint after 3 seconds if nothing happened
+    const hintTimer = setTimeout(() => {
+      if (!showAuthOptions) {
+        setShowTapHint(true);
+      }
+    }, 3000);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
+      clearTimeout(hintTimer);
+    };
+  }, [showAuthOptions]);
 
   const startTransition = () => {
     setShowAuthOptions(true);
@@ -57,39 +78,78 @@ export default function LandingScreen({ navigation }) {
   };
 
   const handleLogin = () => {
-    // For now, navigate directly to main app
-    // In a real app, this would handle authentication
-    navigation.replace("Main");
+    navigation.navigate("Login");
   };
 
   const handleSignUp = () => {
-    // For now, navigate directly to main app
-    // In a real app, this would handle registration
-    navigation.replace("Main");
+    navigation.navigate("SignUp");
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const result = await AuthService.signInWithGoogle();
+
+      if (result.success) {
+        navigation.replace("Main");
+      } else {
+        Alert.alert("Google Sign In Failed", result.error);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Google sign in failed. Please try again.");
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      const result = await AuthService.signInWithApple();
+
+      if (result.success) {
+        navigation.replace("Main");
+      } else {
+        Alert.alert("Apple Sign In Failed", result.error);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Apple sign in failed. Please try again.");
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         {/* Animated Logo and Brand Section */}
-        <Animated.View
-          style={[
-            styles.logoSection,
-            {
-              transform: [{ translateY: logoTranslateY }],
-            },
-          ]}
+        <TouchableOpacity
+          style={styles.logoSectionTouchable}
+          onPress={() => {
+            if (!showAuthOptions) {
+              startTransition();
+            }
+          }}
+          activeOpacity={showAuthOptions ? 1 : 0.7}
         >
-          <View style={styles.logoContainer}>
-            <Image
-              source={require("../../assets/logo.png")}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={styles.brandName}>Midnight Mile</Text>
-          <Text style={styles.tagline}>Security in every step.</Text>
-        </Animated.View>
+          <Animated.View
+            style={[
+              styles.logoSection,
+              {
+                transform: [{ translateY: logoTranslateY }],
+              },
+            ]}
+          >
+            <View style={styles.logoContainer}>
+              <Image
+                source={require("../../assets/logo.png")}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={styles.brandName}>Midnight Mile</Text>
+            <Text style={styles.tagline}>Security in every step.</Text>
+
+            {/* Show tap hint if needed */}
+            {showTapHint && !showAuthOptions && (
+              <Text style={styles.tapHint}>Tap to continue</Text>
+            )}
+          </Animated.View>
+        </TouchableOpacity>
 
         {/* Auth Options - Only show after transition */}
         {showAuthOptions && (
@@ -150,7 +210,10 @@ export default function LandingScreen({ navigation }) {
               </TouchableOpacity>
 
               <View style={styles.socialButtonsContainer}>
-                <TouchableOpacity style={styles.socialButton}>
+                <TouchableOpacity
+                  style={styles.socialButton}
+                  onPress={handleGoogleSignIn}
+                >
                   <Ionicons
                     name="logo-google"
                     size={20}
@@ -159,7 +222,10 @@ export default function LandingScreen({ navigation }) {
                   <Text style={styles.socialButtonText}>Google</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.socialButton}>
+                <TouchableOpacity
+                  style={styles.socialButton}
+                  onPress={handleAppleSignIn}
+                >
                   <Ionicons
                     name="logo-apple"
                     size={20}
@@ -189,6 +255,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logoSection: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoSectionTouchable: {
     alignItems: "center",
     justifyContent: "center",
   },
@@ -330,5 +400,12 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.medium,
     marginLeft: SPACING.sm,
     fontFamily: FONTS.body,
+  },
+  tapHint: {
+    marginTop: SPACING.md,
+    fontSize: FONTS.sizes.medium,
+    color: COLORS.mutedTeal,
+    fontFamily: FONTS.body,
+    opacity: 0.7,
   },
 });

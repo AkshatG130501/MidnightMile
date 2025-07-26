@@ -1,12 +1,16 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
+import { Linking } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { Ionicons } from "@expo/vector-icons";
+import * as AuthSession from "expo-auth-session";
 
 // Import screens
 import LandingScreen from "./src/screens/LandingScreen";
+import LoginScreen from "./src/screens/LoginScreen";
+import SignUpScreen from "./src/screens/SignUpScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import ContactsScreen from "./src/screens/ContactsScreen";
 import SafeSpotsScreen from "./src/screens/SafeSpotsScreen";
@@ -60,6 +64,32 @@ function MainTabs() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Handle OAuth redirect URLs
+    const handleUrl = (url) => {
+      if (url.includes("midnightmile://auth")) {
+        // OAuth callback will be handled by the WebBrowser session
+        console.log("OAuth redirect received:", url);
+      }
+    };
+
+    // Listen for URL events
+    const subscription = Linking.addEventListener("url", (event) => {
+      handleUrl(event.url);
+    });
+
+    // Check if app was opened with a URL
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleUrl(url);
+      }
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
+
   return (
     <NavigationContainer>
       <StatusBar style="dark" backgroundColor={COLORS.white} />
@@ -70,6 +100,8 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Landing" component={LandingScreen} />
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>

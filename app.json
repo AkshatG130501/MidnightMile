@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "midnightmile",
     "extra": {
       "GOOGLE_MAPS_API_KEY": "AIzaSyDMuuZVn6uDZj5xvBjlHkEqfnMW12jIgbA",
       "GOOGLE_MAPS_WALKING_RADIUS": 2000,
@@ -57,7 +58,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Midnight Mile to use your location for safe navigation and emergency features."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }
