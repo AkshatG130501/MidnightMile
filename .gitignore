@@ -9,6 +9,14 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Environment variables
+.env
+.env.local
+.env.production
+
+# API Keys and sensitive data
+src/config/keys.js
+
 # Native
 .kotlin/
 *.orig.*
