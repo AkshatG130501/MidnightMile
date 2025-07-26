@@ -1,7 +1,7 @@
-import { supabase } from '../config/supabase';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import * as Crypto from 'expo-crypto';
+import { supabase } from "../config/supabase";
+import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
+import * as Crypto from "expo-crypto";
 
 // Configure WebBrowser for OAuth
 WebBrowser.maybeCompleteAuthSession();
@@ -68,17 +68,17 @@ export class AuthService {
   static async signInWithGoogle() {
     try {
       const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'midnightmile',
-        path: 'auth'
+        scheme: "midnightmile",
+        path: "auth",
       });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
           redirectTo: redirectUri,
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            access_type: "offline",
+            prompt: "consent",
           },
         },
       });
@@ -94,21 +94,22 @@ export class AuthService {
           redirectUri
         );
 
-        if (result.type === 'success' && result.url) {
+        if (result.type === "success" && result.url) {
           // Extract the session from the callback URL
           const url = new URL(result.url);
           const fragment = url.hash.substring(1);
           const params = new URLSearchParams(fragment);
-          
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
+
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
 
           if (accessToken) {
             // Set the session in Supabase
-            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken || '',
-            });
+            const { data: sessionData, error: sessionError } =
+              await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken || "",
+              });
 
             if (sessionError) {
               throw new Error(sessionError.message);
@@ -123,7 +124,7 @@ export class AuthService {
         }
       }
 
-      throw new Error('OAuth flow was cancelled or failed');
+      throw new Error("OAuth flow was cancelled or failed");
     } catch (error) {
       return {
         success: false,
@@ -136,12 +137,12 @@ export class AuthService {
   static async signInWithApple() {
     try {
       const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'midnightmile',
-        path: 'auth'
+        scheme: "midnightmile",
+        path: "auth",
       });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
+        provider: "apple",
         options: {
           redirectTo: redirectUri,
         },
@@ -158,21 +159,22 @@ export class AuthService {
           redirectUri
         );
 
-        if (result.type === 'success' && result.url) {
+        if (result.type === "success" && result.url) {
           // Extract the session from the callback URL
           const url = new URL(result.url);
           const fragment = url.hash.substring(1);
           const params = new URLSearchParams(fragment);
-          
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
+
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
 
           if (accessToken) {
             // Set the session in Supabase
-            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken || '',
-            });
+            const { data: sessionData, error: sessionError } =
+              await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken || "",
+              });
 
             if (sessionError) {
               throw new Error(sessionError.message);
@@ -187,7 +189,7 @@ export class AuthService {
         }
       }
 
-      throw new Error('OAuth flow was cancelled or failed');
+      throw new Error("OAuth flow was cancelled or failed");
     } catch (error) {
       return {
         success: false,

@@ -67,14 +67,14 @@ export default function App() {
   useEffect(() => {
     // Handle OAuth redirect URLs
     const handleUrl = (url) => {
-      if (url.includes('midnightmile://auth')) {
+      if (url.includes("midnightmile://auth")) {
         // OAuth callback will be handled by the WebBrowser session
-        console.log('OAuth redirect received:', url);
+        console.log("OAuth redirect received:", url);
       }
     };
 
     // Listen for URL events
-    const subscription = Linking.addEventListener('url', (event) => {
+    const subscription = Linking.addEventListener("url", (event) => {
       handleUrl(event.url);
     });
 
