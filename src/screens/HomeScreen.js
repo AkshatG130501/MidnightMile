@@ -42,11 +42,26 @@ export default function HomeScreen() {
   const [safeSpots, setSafeSpots] = useState([]);
   const [mapTheme, setMapTheme] = useState(GoogleMapsService.getMapTheme()); // Auto-detect based on time
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
   const [isLoadingAutocomplete, setIsLoadingAutocomplete] = useState(false);
   const [isProcessingSuggestion, setIsProcessingSuggestion] = useState(false);
   const [currentCity, setCurrentCity] = useState("");
+  const [showAllRoutes, setShowAllRoutes] = useState(false);
+  const [routeFilterMode, setRouteFilterMode] = useState("safe"); // "safe", "all", "fastest"
+
+  // Google Maps-style suggestion categories
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [savedPlaces, setSavedPlaces] = useState([
+    { id: "home", title: "Home", address: "Set home location", icon: "home" },
+    {
+      id: "work",
+      title: "Work",
+      address: "Set work location",
+      icon: "business",
+    },
+  ]);
+  const [contextualSuggestions, setContextualSuggestions] = useState([]);
+  const [nearbySuggestions, setNearbySuggestions] = useState([]);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [navigationStartTime, setNavigationStartTime] = useState(null);
@@ -156,7 +171,7 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // Get current city name for location-based suggestions
+  // Get current city name and generate contextual suggestions
   const getCurrentCity = async (coords) => {
     try {
       const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.latitude},${coords.longitude}&key=${GoogleMapsService.apiKey}`;
@@ -175,32 +190,163 @@ export default function HomeScreen() {
         if (cityComponent) {
           const city = cityComponent.long_name;
           setCurrentCity(city);
-          generateLocationSuggestions(city);
+          generateGoogleMapsStyleSuggestions(city, coords);
           console.log(`📍 Current city: ${city}`);
         }
       }
     } catch (error) {
       console.error("Error getting current city:", error);
       // Fallback suggestions if we can't get the city
-      generateLocationSuggestions("Your Area");
+      generateGoogleMapsStyleSuggestions("Your Area", coords);
     }
   };
 
-  // Generate location-based suggestions
-  const generateLocationSuggestions = (city) => {
-    const commonPlaces = [
-      `Airport, ${city}`,
-      `Railway Station, ${city}`,
-      `Bus Station, ${city}`,
-      `Shopping Mall, ${city}`,
-      `Hospital, ${city}`,
-      `University, ${city}`,
-      `City Center, ${city}`,
-      `Market, ${city}`,
-      `Restaurant, ${city}`,
-      `Hotel, ${city}`,
+  // Generate Google Maps-style categorized suggestions
+  const generateGoogleMapsStyleSuggestions = (city, coords) => {
+    // Generate time-based contextual suggestions
+    const hour = new Date().getHours();
+    let timeBasedSuggestions = [];
+
+    if (hour >= 6 && hour < 11) {
+      // Morning suggestions
+      timeBasedSuggestions = [
+        {
+          title: "Coffee shops",
+          type: "category",
+          icon: "cafe",
+          query: "coffee near me",
+        },
+        {
+          title: "Breakfast places",
+          type: "category",
+          icon: "restaurant",
+          query: "breakfast near me",
+        },
+        {
+          title: "Gas stations",
+          type: "category",
+          icon: "car",
+          query: "gas station near me",
+        },
+      ];
+    } else if (hour >= 11 && hour < 14) {
+      // Lunch suggestions
+      timeBasedSuggestions = [
+        {
+          title: "Restaurants",
+          type: "category",
+          icon: "restaurant",
+          query: "restaurant near me",
+        },
+        {
+          title: "Fast food",
+          type: "category",
+          icon: "fast-food",
+          query: "fast food near me",
+        },
+        {
+          title: "Pharmacies",
+          type: "category",
+          icon: "medical",
+          query: "pharmacy near me",
+        },
+      ];
+    } else if (hour >= 17 && hour < 22) {
+      // Evening suggestions
+      timeBasedSuggestions = [
+        {
+          title: "Dinner",
+          type: "category",
+          icon: "restaurant",
+          query: "dinner near me",
+        },
+        {
+          title: "Shopping",
+          type: "category",
+          icon: "storefront",
+          query: "shopping mall near me",
+        },
+        {
+          title: "Entertainment",
+          type: "category",
+          icon: "film",
+          query: "cinema near me",
+        },
+      ];
+    } else {
+      // Night/late suggestions - safety focused
+      timeBasedSuggestions = [
+        {
+          title: "24/7 stores",
+          type: "category",
+          icon: "storefront",
+          query: "24 hour store near me",
+        },
+        {
+          title: "Police stations",
+          type: "category",
+          icon: "shield",
+          query: "police station near me",
+        },
+        {
+          title: "Hospitals",
+          type: "category",
+          icon: "medical",
+          query: "hospital near me",
+        },
+      ];
+    }
+
+    setContextualSuggestions(timeBasedSuggestions);
+
+    // Generate nearby safety-focused suggestions
+    const safetySuggestions = [
+      {
+        title: "Police stations",
+        type: "safety",
+        icon: "shield-checkmark",
+        query: "police station near me",
+      },
+      {
+        title: "Hospitals",
+        type: "safety",
+        icon: "medical",
+        query: "hospital near me",
+      },
+      {
+        title: "24/7 Pharmacies",
+        type: "safety",
+        icon: "medical",
+        query: "24 hour pharmacy near me",
+      },
+      {
+        title: "Well-lit parking",
+        type: "safety",
+        icon: "car",
+        query: "parking garage near me",
+      },
     ];
-    setSuggestions(commonPlaces);
+
+    setNearbySuggestions(safetySuggestions);
+  };
+
+  // Add to recent searches when user searches for something
+  const addToRecentSearches = (searchTerm, coords = null) => {
+    const newSearch = {
+      id: Date.now().toString(),
+      title: searchTerm,
+      timestamp: new Date(),
+      coords: coords,
+      icon: "time",
+    };
+
+    setRecentSearches((prev) => {
+      // Remove if already exists and add to front
+      const filtered = prev.filter((item) => item.title !== searchTerm);
+      const updated = [newSearch, ...filtered];
+      // Keep only last 10 searches
+      return updated.slice(0, 10);
+    });
   };
 
   // Handle autocomplete search with debouncing
@@ -588,15 +734,35 @@ export default function HomeScreen() {
       );
       setDestinationCoords(destinationLocation);
 
-      // Get safe routes
-      const safeRoutes = await GoogleMapsService.getSafeRoutes(
-        location.coords,
-        destinationLocation
-      );
+      let fetchedRoutes = [];
 
-      setRoutes(safeRoutes);
-      if (safeRoutes.length > 0) {
-        setSelectedRoute(safeRoutes[0]); // Select the safest route by default
+      // Get routes based on the selected filter mode
+      if (routeFilterMode === "all") {
+        // Get ALL possible routes with different modes and alternatives
+        fetchedRoutes = await GoogleMapsService.getAllPossibleRoutes(
+          location.coords,
+          destinationLocation
+        );
+      } else if (routeFilterMode === "fastest") {
+        // Get routes sorted by fastest time across all modes
+        const allRoutes = await GoogleMapsService.getAllPossibleRoutes(
+          location.coords,
+          destinationLocation
+        );
+        fetchedRoutes = allRoutes.sort(
+          (a, b) => a.legs[0].duration.value - b.legs[0].duration.value
+        );
+      } else {
+        // Default: Get safe routes (walking only with safety prioritization)
+        fetchedRoutes = await GoogleMapsService.getSafeRoutes(
+          location.coords,
+          destinationLocation
+        );
+      }
+
+      setRoutes(fetchedRoutes);
+      if (fetchedRoutes.length > 0) {
+        setSelectedRoute(fetchedRoutes[0]); // Select the best route by default
       }
 
       // Update map region to show both origin and destination
@@ -701,20 +867,61 @@ export default function HomeScreen() {
   };
 
   const handleSuggestionSelect = (suggestion) => {
-    console.log(`🎯 Selected static suggestion: ${suggestion}`);
+    console.log(`🎯 Selected suggestion:`, suggestion);
     console.log(`📍 Current location available:`, !!location);
 
     setIsProcessingSuggestion(true);
-    setDestination(suggestion);
     setShowSuggestions(false);
     setAutocompleteSuggestions([]);
 
-    // Small delay to allow UI update before starting search
-    setTimeout(() => {
-      console.log(`🚀 Starting destination search for: ${suggestion}`);
-      handleDestinationSearch();
+    // Handle different types of suggestions
+    if (suggestion.type === "category" || suggestion.type === "safety") {
+      // For category suggestions, use the query to search
+      const searchTerm = suggestion.query || suggestion.title;
+      setDestination(searchTerm);
+      addToRecentSearches(suggestion.title);
+
+      setTimeout(() => {
+        console.log(`🚀 Starting category search for: ${searchTerm}`);
+        handleDestinationSearch();
+        setIsProcessingSuggestion(false);
+      }, 100);
+    } else if (suggestion.type === "saved") {
+      // Handle saved places (Home, Work)
+      if (suggestion.coords) {
+        setDestination(suggestion.title);
+        setDestinationCoords(suggestion.coords);
+        addToRecentSearches(suggestion.title, suggestion.coords);
+        // You would handle saved place navigation here
+      } else {
+        Alert.alert(
+          `Set ${suggestion.title}`,
+          `Would you like to set your ${suggestion.title.toLowerCase()} location?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Set Location",
+              onPress: () => {
+                // Handle setting saved location
+                console.log(`Setting ${suggestion.title} location`);
+              },
+            },
+          ]
+        );
+      }
       setIsProcessingSuggestion(false);
-    }, 100);
+    } else {
+      // Handle recent searches or regular text
+      const searchTerm = suggestion.title || suggestion;
+      setDestination(searchTerm);
+      addToRecentSearches(searchTerm);
+
+      setTimeout(() => {
+        console.log(`🚀 Starting destination search for: ${searchTerm}`);
+        handleDestinationSearch();
+        setIsProcessingSuggestion(false);
+      }, 100);
+    }
   };
 
   const handleAutocompleteSuggestionSelect = async (suggestion) => {
@@ -798,6 +1005,9 @@ export default function HomeScreen() {
     console.log(`📍 Place details received:`, placeDetails);
     setDestinationCoords(placeDetails);
 
+    // Add to recent searches
+    addToRecentSearches(suggestion.main_text, placeDetails);
+
     console.log(
       `🚶 Getting safe routes from current location to destination...`
     );
@@ -844,15 +1054,24 @@ export default function HomeScreen() {
   };
 
   const handleInputFocus = () => {
-    // Always show suggestions on focus if we have any content or static suggestions
+    // Always show suggestions on focus
     if (destination.length >= 2) {
       setShowSuggestions(true);
       // Trigger autocomplete immediately if not already done
       if (autocompleteSuggestions.length === 0) {
         handleAutocompleteSearch(destination);
       }
-    } else if (suggestions.length > 0) {
-      setShowSuggestions(true);
+    } else {
+      // Show Google Maps-style suggestions when input is empty/short
+      const hasAnySuggestions =
+        recentSearches.length > 0 ||
+        savedPlaces.length > 0 ||
+        contextualSuggestions.length > 0 ||
+        nearbySuggestions.length > 0;
+
+      if (hasAnySuggestions) {
+        setShowSuggestions(true);
+      }
     }
   };
 
@@ -1134,7 +1353,13 @@ export default function HomeScreen() {
                 if (text.length >= 2) {
                   setShowSuggestions(true);
                 } else if (text.length === 0) {
-                  setShowSuggestions(suggestions.length > 0);
+                  // Show Google Maps-style suggestions when empty
+                  const hasAnySuggestions =
+                    recentSearches.length > 0 ||
+                    savedPlaces.length > 0 ||
+                    contextualSuggestions.length > 0 ||
+                    nearbySuggestions.length > 0;
+                  setShowSuggestions(hasAnySuggestions);
                   setAutocompleteSuggestions([]); // Clear autocomplete when text is cleared
                 } else {
                   // For text length 1, hide suggestions but don't clear autocomplete yet
@@ -1164,7 +1389,10 @@ export default function HomeScreen() {
           {showSuggestions && (
             <View
               style={styles.suggestionsContainer}
-              onStartShouldSetResponder={() => true}
+              onStartShouldSetResponder={(evt) => {
+                // Only capture touch events if they're not on the ScrollView
+                return false;
+              }}
               onResponderStart={() => {
                 console.log(`🔥 Suggestions container touch started`);
                 isTouchingRef.current = true;
@@ -1180,7 +1408,25 @@ export default function HomeScreen() {
             >
               <ScrollView
                 style={styles.suggestionsList}
+                contentContainerStyle={styles.suggestionsContent}
                 nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                onTouchStart={() => {
+                  isTouchingRef.current = true;
+                  if (blurTimeoutRef.current) {
+                    clearTimeout(blurTimeoutRef.current);
+                    blurTimeoutRef.current = null;
+                  }
+                }}
+                onTouchEnd={() => {
+                  // Don't immediately set to false, let the suggestion selection complete
+                  setTimeout(() => {
+                    if (!isProcessingSuggestion) {
+                      isTouchingRef.current = false;
+                    }
+                  }, 100);
+                }}
               >
                 {/* Loading state for autocomplete */}
                 {destination.length >= 2 &&
@@ -1262,57 +1508,278 @@ export default function HomeScreen() {
                     </>
                   )}
 
-                {/* Static City-based Suggestions (show when no text or short text) */}
-                {destination.length < 2 && suggestions.length > 0 && (
+                {/* Google Maps-style Suggestions (show when no text or short text) */}
+                {destination.length < 2 && (
                   <>
-                    <Text style={styles.suggestionsHeader}>
-                      Popular places in {currentCity || "your area"}:
-                    </Text>
-                    {suggestions.map((suggestion, index) => (
-                      <TouchableOpacity
-                        key={`static-${index}`}
-                        style={styles.suggestionItem}
-                        activeOpacity={0.7}
-                        onPressIn={() => {
-                          console.log(
-                            `🔥 Press started for static: ${suggestion}`
-                          );
-                          isTouchingRef.current = true;
-                          // Clear any pending blur timeout
-                          if (blurTimeoutRef.current) {
-                            clearTimeout(blurTimeoutRef.current);
-                            blurTimeoutRef.current = null;
-                          }
-                          setIsProcessingSuggestion(true);
-                        }}
-                        onPress={() => {
-                          console.log(
-                            `👆 Static suggestion TouchableOpacity pressed: ${suggestion}`
-                          );
-                          handleSuggestionSelect(suggestion);
-                        }}
-                        onPressOut={() => {
-                          console.log(
-                            `🔥 Press ended for static: ${suggestion}`
-                          );
-                          isTouchingRef.current = false;
-                          // Don't reset processing here - let the handler do it
-                        }}
-                      >
-                        <Ionicons
-                          name="location-outline"
-                          size={16}
-                          color={COLORS.mutedTeal}
-                        />
-                        <Text style={styles.suggestionText}>{suggestion}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {/* Recent Searches */}
+                    {recentSearches.length > 0 && (
+                      <>
+                        <Text style={styles.suggestionsHeader}>Recent</Text>
+                        {recentSearches.slice(0, 5).map((search, index) => (
+                          <TouchableOpacity
+                            key={`recent-${search.id}`}
+                            style={styles.suggestionItem}
+                            activeOpacity={0.7}
+                            onPressIn={() => {
+                              isTouchingRef.current = true;
+                              if (blurTimeoutRef.current) {
+                                clearTimeout(blurTimeoutRef.current);
+                                blurTimeoutRef.current = null;
+                              }
+                              setIsProcessingSuggestion(true);
+                            }}
+                            onPress={() => {
+                              handleSuggestionSelect(search);
+                            }}
+                            onPressOut={() => {
+                              isTouchingRef.current = false;
+                            }}
+                          >
+                            <Ionicons
+                              name="time"
+                              size={16}
+                              color={COLORS.slateGray}
+                            />
+                            <Text style={styles.suggestionText}>
+                              {search.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Saved Places */}
+                    {savedPlaces.length > 0 && (
+                      <>
+                        <Text style={styles.suggestionsHeader}>
+                          Saved places
+                        </Text>
+                        {savedPlaces.map((place, index) => (
+                          <TouchableOpacity
+                            key={`saved-${place.id}`}
+                            style={styles.suggestionItem}
+                            activeOpacity={0.7}
+                            onPressIn={() => {
+                              isTouchingRef.current = true;
+                              if (blurTimeoutRef.current) {
+                                clearTimeout(blurTimeoutRef.current);
+                                blurTimeoutRef.current = null;
+                              }
+                              setIsProcessingSuggestion(true);
+                            }}
+                            onPress={() => {
+                              handleSuggestionSelect({
+                                ...place,
+                                type: "saved",
+                              });
+                            }}
+                            onPressOut={() => {
+                              isTouchingRef.current = false;
+                            }}
+                          >
+                            <Ionicons
+                              name={place.icon}
+                              size={16}
+                              color={COLORS.mutedTeal}
+                            />
+                            <View style={styles.suggestionTextContainer}>
+                              <Text style={styles.suggestionMainText}>
+                                {place.title}
+                              </Text>
+                              <Text style={styles.suggestionSecondaryText}>
+                                {place.address}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Contextual Suggestions */}
+                    {contextualSuggestions.length > 0 && (
+                      <>
+                        <Text style={styles.suggestionsHeader}>
+                          {new Date().getHours() < 12
+                            ? "Morning suggestions"
+                            : new Date().getHours() < 17
+                            ? "Afternoon suggestions"
+                            : new Date().getHours() < 22
+                            ? "Evening suggestions"
+                            : "Safety suggestions"}
+                        </Text>
+                        {contextualSuggestions.map((suggestion, index) => (
+                          <TouchableOpacity
+                            key={`contextual-${index}`}
+                            style={styles.suggestionItem}
+                            activeOpacity={0.7}
+                            onPressIn={() => {
+                              isTouchingRef.current = true;
+                              if (blurTimeoutRef.current) {
+                                clearTimeout(blurTimeoutRef.current);
+                                blurTimeoutRef.current = null;
+                              }
+                              setIsProcessingSuggestion(true);
+                            }}
+                            onPress={() => {
+                              handleSuggestionSelect(suggestion);
+                            }}
+                            onPressOut={() => {
+                              isTouchingRef.current = false;
+                            }}
+                          >
+                            <Ionicons
+                              name={suggestion.icon}
+                              size={16}
+                              color={COLORS.mutedTeal}
+                            />
+                            <Text style={styles.suggestionText}>
+                              {suggestion.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Nearby Safety Spots */}
+                    {nearbySuggestions.length > 0 && (
+                      <>
+                        <Text style={styles.suggestionsHeader}>
+                          Nearby safety spots
+                        </Text>
+                        {nearbySuggestions.map((suggestion, index) => (
+                          <TouchableOpacity
+                            key={`nearby-${index}`}
+                            style={styles.suggestionItem}
+                            activeOpacity={0.7}
+                            onPressIn={() => {
+                              isTouchingRef.current = true;
+                              if (blurTimeoutRef.current) {
+                                clearTimeout(blurTimeoutRef.current);
+                                blurTimeoutRef.current = null;
+                              }
+                              setIsProcessingSuggestion(true);
+                            }}
+                            onPress={() => {
+                              handleSuggestionSelect(suggestion);
+                            }}
+                            onPressOut={() => {
+                              isTouchingRef.current = false;
+                            }}
+                          >
+                            <Ionicons
+                              name={suggestion.icon}
+                              size={16}
+                              color={COLORS.safetyAmber}
+                            />
+                            <Text style={styles.suggestionText}>
+                              {suggestion.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
                   </>
                 )}
               </ScrollView>
             </View>
           )}
         </View>
+
+        {/* Route Filter Options */}
+        {destinationCoords && (
+          <View style={styles.routeFilterContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.routeFilterScroll}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.routeFilterButton,
+                  routeFilterMode === "safe" && styles.routeFilterButtonActive,
+                ]}
+                onPress={() => {
+                  setRouteFilterMode("safe");
+                  if (destinationCoords) handleDestinationSearch();
+                }}
+              >
+                <Ionicons
+                  name="shield-checkmark"
+                  size={16}
+                  color={
+                    routeFilterMode === "safe" ? COLORS.white : COLORS.mutedTeal
+                  }
+                />
+                <Text
+                  style={[
+                    styles.routeFilterText,
+                    routeFilterMode === "safe" && styles.routeFilterTextActive,
+                  ]}
+                >
+                  Safest
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.routeFilterButton,
+                  routeFilterMode === "fastest" &&
+                    styles.routeFilterButtonActive,
+                ]}
+                onPress={() => {
+                  setRouteFilterMode("fastest");
+                  if (destinationCoords) handleDestinationSearch();
+                }}
+              >
+                <Ionicons
+                  name="speedometer"
+                  size={16}
+                  color={
+                    routeFilterMode === "fastest"
+                      ? COLORS.white
+                      : COLORS.mutedTeal
+                  }
+                />
+                <Text
+                  style={[
+                    styles.routeFilterText,
+                    routeFilterMode === "fastest" &&
+                      styles.routeFilterTextActive,
+                  ]}
+                >
+                  Fastest
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.routeFilterButton,
+                  routeFilterMode === "all" && styles.routeFilterButtonActive,
+                ]}
+                onPress={() => {
+                  setRouteFilterMode("all");
+                  if (destinationCoords) handleDestinationSearch();
+                }}
+              >
+                <Ionicons
+                  name="list"
+                  size={16}
+                  color={
+                    routeFilterMode === "all" ? COLORS.white : COLORS.mutedTeal
+                  }
+                />
+                <Text
+                  style={[
+                    styles.routeFilterText,
+                    routeFilterMode === "all" && styles.routeFilterTextActive,
+                  ]}
+                >
+                  All Options
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
 
         {/* Map */}
         <View style={styles.mapContainer}>
@@ -1612,7 +2079,11 @@ export default function HomeScreen() {
             <View style={styles.bottomPanel}>
               <View style={styles.panelHeader}>
                 <Text style={styles.routeTitle}>
-                  Safe Routes to {destination}
+                  {routeFilterMode === "all"
+                    ? `All Walking Routes to ${destination} (${routes.length})`
+                    : routeFilterMode === "fastest"
+                    ? `Fastest Walking Routes to ${destination} (${routes.length})`
+                    : `Safe Walking Routes to ${destination} (${routes.length})`}
                 </Text>
                 {isLoadingRoutes && (
                   <ActivityIndicator size="small" color={COLORS.mutedTeal} />
@@ -1626,7 +2097,7 @@ export default function HomeScreen() {
               >
                 {routes.map((route, index) => (
                   <TouchableOpacity
-                    key={index}
+                    key={route.id || index}
                     style={[
                       styles.routeOption,
                       selectedRoute?.id === route.id &&
@@ -1640,32 +2111,43 @@ export default function HomeScreen() {
                           styles.safetyIndicator,
                           {
                             backgroundColor:
-                              SAFETY_LEVELS[route.safetyLevel].color,
+                              SAFETY_LEVELS[route.safetyLevel]?.color ||
+                              COLORS.slateGray,
                           },
                         ]}
                       />
                       <Text style={styles.safetyLabel}>
-                        {SAFETY_LEVELS[route.safetyLevel].label}
+                        {SAFETY_LEVELS[route.safetyLevel]?.label || "Unknown"}
                       </Text>
                       <Text style={styles.safetyScore}>
-                        {route.safetyScore}/100
+                        {route.safetyScore || 0}/100
                       </Text>
                     </View>
+
+                    {/* Route Type */}
+                    {route.routeType && (
+                      <Text style={styles.routeTypeText}>
+                        {route.routeType}
+                      </Text>
+                    )}
 
                     <Text style={styles.routeText}>Route {index + 1}</Text>
                     <Text style={styles.routeDetails}>
                       {route.estimatedTime} • {route.distance}
                     </Text>
 
-                    {route.legs[0].steps.length > 0 && (
-                      <Text style={styles.routeDescription} numberOfLines={2}>
-                        Via{" "}
-                        {route.legs[0].steps[0].html_instructions.replace(
-                          /<[^>]*>/g,
-                          ""
-                        )}
-                      </Text>
-                    )}
+                    {route.legs &&
+                      route.legs[0] &&
+                      route.legs[0].steps &&
+                      route.legs[0].steps.length > 0 && (
+                        <Text style={styles.routeDescription} numberOfLines={2}>
+                          Via{" "}
+                          {route.legs[0].steps[0].html_instructions.replace(
+                            /<[^>]*>/g,
+                            ""
+                          )}
+                        </Text>
+                      )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1695,10 +2177,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   searchContainer: {
-    position: "relative", // Enable positioning context for absolute children
+    position: "absolute", // Enable positioning context for absolute children
+    top: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     backgroundColor: COLORS.white,
+    marginTop: SPACING.xxl,
     zIndex: 1000, // Ensure search container appears above other elements
     ...SHADOWS.light,
   },
@@ -1724,12 +2210,18 @@ const styles = StyleSheet.create({
     right: SPACING.md,
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
-    maxHeight: 200,
+    minHeight: 150, // Minimum height to show suggestions
+    maxHeight: height * 0.5, // Increased height for more categories
     zIndex: 1001, // Higher than search container
     ...SHADOWS.medium,
   },
   suggestionsList: {
     flex: 1,
+    maxHeight: height * 0.5, // Ensure ScrollView has bounded height
+  },
+  suggestionsContent: {
+    flexGrow: 1,
+    paddingBottom: SPACING.sm, // Add padding for better scrolling experience
   },
   loadingContainer: {
     flexDirection: "row",
@@ -1790,6 +2282,73 @@ const styles = StyleSheet.create({
     color: COLORS.slateGray,
     marginTop: 2,
   },
+  // Route Filter Styles
+  routeFilterContainer: {
+    position: "absolute",
+    top: 121, // Adjusted to be below search container (48 + 16 + ~46 for search bar)
+    left: 0,
+    right: 0,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.white,
+    zIndex: 999,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.warmBeige,
+    ...SHADOWS.light,
+  },
+  routeFilterScroll: {
+    flexGrow: 0,
+  },
+  routeFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginRight: SPACING.sm,
+    backgroundColor: COLORS.warmBeige,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.mutedTeal,
+  },
+  routeFilterButtonActive: {
+    backgroundColor: COLORS.mutedTeal,
+    borderColor: COLORS.mutedTeal,
+  },
+  routeFilterText: {
+    marginLeft: SPACING.xs,
+    fontSize: FONTS.sizes.small,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.mutedTeal,
+  },
+  routeFilterTextActive: {
+    color: COLORS.white,
+  },
+  // Route Display Enhancement Styles
+  routeModeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.xs,
+  },
+  travelModeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.mutedTeal,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    marginRight: SPACING.xs,
+  },
+  travelModeText: {
+    marginLeft: 4,
+    fontSize: FONTS.sizes.tiny,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.white,
+  },
+  routeTypeText: {
+    fontSize: FONTS.sizes.tiny,
+    color: COLORS.slateGray,
+    fontStyle: "italic",
+  },
   mapContainer: {
     flex: 1,
     position: "relative",
@@ -1799,7 +2358,7 @@ const styles = StyleSheet.create({
   },
   sosButton: {
     position: "absolute",
-    top: SPACING.md,
+    bottom: SPACING.md,
     right: SPACING.md,
     backgroundColor: COLORS.warningRed,
     width: 70,
@@ -1807,6 +2366,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 1000,
     ...SHADOWS.heavy,
   },
   sosText: {
@@ -1969,6 +2529,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.white,
     justifyContent: "center",
     alignItems: "center",
+    position: "absolute",
+    bottom: 10, // Adjust as needed
+    right: 10, // Adjust as needed
+    ...SHADOWS.medium,
   },
   currentLocationInner: {
     width: 8,

@@ -7,8 +7,13 @@ export class GoogleMapsService {
     process.env.GOOGLE_MAPS_API_KEY ||
     "YOUR_GOOGLE_MAPS_API_KEY_HERE";
 
-  // Get directions between two points
-  static async getDirections(origin, destination, mode = "walking") {
+  // Get directions between two points with alternative routes
+  static async getDirections(
+    origin,
+    destination,
+    mode = "walking",
+    alternatives = true
+  ) {
     try {
       const originStr = `${origin.latitude},${origin.longitude}`;
       const destinationStr =
@@ -16,7 +21,8 @@ export class GoogleMapsService {
           ? destination
           : `${destination.latitude},${destination.longitude}`;
 
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=${mode}&key=${this.apiKey}`;
+      // Add alternatives parameter to get multiple route options
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=${mode}&alternatives=${alternatives}&key=${this.apiKey}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -35,7 +41,12 @@ export class GoogleMapsService {
   // Get multiple route alternatives with safety scoring
   static async getSafeRoutes(origin, destination) {
     try {
-      const routes = await this.getDirections(origin, destination, "walking");
+      const routes = await this.getDirections(
+        origin,
+        destination,
+        "walking",
+        true
+      );
 
       // Add safety scoring to each route
       const safeRoutes = routes.map((route, index) => {
@@ -47,6 +58,7 @@ export class GoogleMapsService {
           safetyLevel: this.getSafetyLevel(safetyScore),
           estimatedTime: route.legs[0].duration.text,
           distance: route.legs[0].distance.text,
+          routeType: this.getRouteType(route),
         };
       });
 
@@ -56,6 +68,75 @@ export class GoogleMapsService {
       console.error("Error getting safe routes:", error);
       throw error;
     }
+  }
+
+  // Get ALL possible walking routes only
+  static async getAllPossibleRoutes(origin, destination) {
+    try {
+      // Only get walking routes with alternatives
+      const routes = await this.getDirections(
+        origin,
+        destination,
+        "walking",
+        true
+      );
+
+      const processedRoutes = routes.map((route, index) => {
+        const safetyScore = this.calculateSafetyScore(route);
+        return {
+          ...route,
+          id: `walking_${index}`,
+          mode: "walking",
+          safetyScore,
+          safetyLevel: this.getSafetyLevel(safetyScore),
+          estimatedTime: route.legs[0].duration.text,
+          distance: route.legs[0].distance.text,
+          routeType: this.getRouteType(route),
+          travelMode: "walking",
+        };
+      });
+
+      // Sort by a combination of safety score and efficiency
+      return processedRoutes.sort((a, b) => {
+        // Prioritize safety, then duration
+        if (a.safetyScore !== b.safetyScore) {
+          return b.safetyScore - a.safetyScore;
+        }
+        return a.legs[0].duration.value - b.legs[0].duration.value;
+      });
+    } catch (error) {
+      console.error("Error getting all possible walking routes:", error);
+      throw error;
+    }
+  }
+
+  // Determine route type based on characteristics
+  static getRouteType(route) {
+    const steps = route.legs[0].steps;
+    const instructions = steps
+      .map((step) => step.html_instructions.toLowerCase())
+      .join(" ");
+
+    if (instructions.includes("highway") || instructions.includes("freeway")) {
+      return "Highway Route";
+    } else if (
+      instructions.includes("main") ||
+      instructions.includes("avenue")
+    ) {
+      return "Main Roads";
+    } else if (
+      instructions.includes("residential") ||
+      instructions.includes("street")
+    ) {
+      return "Local Streets";
+    } else if (
+      instructions.includes("park") ||
+      instructions.includes("trail")
+    ) {
+      return "Scenic Route";
+    }
+
+    return "Standard Route";
   }
 
   // Calculate safety score based on route characteristics
