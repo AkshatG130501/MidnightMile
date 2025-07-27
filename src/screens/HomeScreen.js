@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
-import * as Speech from "expo-speech";
+
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -55,7 +55,7 @@ export default function HomeScreen() {
   const [locationWatcher, setLocationWatcher] = useState(null);
   const [currentHeading, setCurrentHeading] = useState(0);
   const [distanceToNextStep, setDistanceToNextStep] = useState(0);
-  const [spokenInstructions, setSpokenInstructions] = useState(new Set());
+
   const [routeProgress, setRouteProgress] = useState(0);
   const blurTimeoutRef = useRef(null);
   const isTouchingRef = useRef(false);
@@ -374,7 +374,6 @@ export default function HomeScreen() {
     setCurrentStepIndex(0);
     setDistanceToNextStep(0);
     setRouteProgress(0);
-    setSpokenInstructions(new Set());
 
     console.log("✅ Live navigation tracking stopped");
   };
@@ -418,13 +417,8 @@ export default function HomeScreen() {
       console.log(`📍 Advancing to step ${currentStepIndex + 1}`);
       setCurrentStepIndex(currentStepIndex + 1);
 
-      // Speak next instruction if AI companion is active
-      if (isAICompanionActive) {
-        const nextStep = steps[currentStepIndex + 1];
-        if (nextStep) {
-          speakInstruction(nextStep.html_instructions);
-        }
-      }
+      // Move to next step
+      console.log(`📍 Moving to next navigation step`);
     }
 
     // Calculate overall route progress
@@ -432,29 +426,12 @@ export default function HomeScreen() {
     const progress = ((currentStepIndex + 1) / totalSteps) * 100;
     setRouteProgress(progress);
 
-    // Speak current instruction if not already spoken and AI is active
-    if (isAICompanionActive && !spokenInstructions.has(currentStepIndex)) {
-      speakInstruction(currentStep.html_instructions);
-      setSpokenInstructions((prev) => new Set([...prev, currentStepIndex]));
-    }
+    // Navigation progress updated
   };
 
   const speakInstruction = (htmlInstruction) => {
-    if (!htmlInstruction) return;
-
-    // Remove HTML tags and clean up instruction
-    const cleanInstruction = htmlInstruction
-      .replace(/<[^>]*>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .trim();
-
-    console.log("🗣️ Speaking instruction:", cleanInstruction);
-
-    Speech.speak(cleanInstruction, {
-      language: "en-US",
-      pitch: 1.0,
-      rate: 0.8,
-    });
+    // Voice commands removed
+    return;
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -472,20 +449,25 @@ export default function HomeScreen() {
     return R * c; // Distance in meters
   };
 
+  // Calculate bearing between two points
+  const calculateBearing = (lat1, lon1, lat2, lon2) => {
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const λ1 = (lon1 * Math.PI) / 180;
+    const λ2 = (lon2 * Math.PI) / 180;
+
+    const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) -
+              Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+    const θ = Math.atan2(y, x);
+    
+    return (θ * 180 / Math.PI + 360) % 360; // Convert to degrees and normalize
+  };
+
   const handleNavigationCompleted = () => {
     console.log("🎯 Navigation completed!");
 
-    // Speak completion message
-    if (isAICompanionActive) {
-      Speech.speak(
-        "You have arrived at your destination. Navigation completed.",
-        {
-          language: "en-US",
-          pitch: 1.0,
-          rate: 0.8,
-        }
-      );
-    }
+    // Navigation completed - voice commands removed
 
     Alert.alert(
       "Navigation Completed",
@@ -953,7 +935,6 @@ export default function HomeScreen() {
     setCurrentStepIndex(0);
     setNavigationStartTime(new Date());
     setRouteProgress(0);
-    setSpokenInstructions(new Set());
 
     // Calculate estimated arrival time with proper null checks
     let arrivalTime = null;
@@ -977,40 +958,40 @@ export default function HomeScreen() {
       // Continue without arrival time if calculation fails
     }
 
-    // Show confirmation and safety reminders
-    const arrivalText = arrivalTime
-      ? `\n\nEstimated arrival: ${arrivalTime.toLocaleTimeString()}`
-      : "";
+    console.log("🚀 Live navigation started successfully");
+    
+    // Enable AI companion for safety if not already active
+    if (!isAICompanionActive) {
+      setIsAICompanionActive(true);
+    }
 
-    Alert.alert(
-      "Navigation Started",
-      `🚀 Live navigation activated!\n\n🛡️ Safety Features:\n• Real-time GPS tracking\n• Turn-by-turn voice guidance\n• AI companion monitoring\n• Emergency SOS available\n• Safe spots highlighted${arrivalText}`,
-      [
-        {
-          text: "Start Journey",
-          style: "default",
-          onPress: () => {
-            console.log("🚀 Live navigation started successfully");
-            // Enable AI companion for safety and voice instructions
-            if (!isAICompanionActive) {
-              setIsAICompanionActive(true);
-            }
+    // Start navigation directly and set up 3D navigation view
+    if (selectedRoute.legs && selectedRoute.legs[0] && selectedRoute.legs[0].steps.length > 0) {
+      console.log("Starting navigation in 3D mode...");
+      
+      // Calculate initial bearing towards the first step
+      if (mapRef.current && location) {
+        const firstStep = selectedRoute.legs[0].steps[0];
+        const bearing = calculateBearing(
+          location.coords.latitude,
+          location.coords.longitude,
+          firstStep.start_location.lat,
+          firstStep.start_location.lng
+        );
 
-            // Speak initial instruction
-            if (
-              selectedRoute.legs &&
-              selectedRoute.legs[0] &&
-              selectedRoute.legs[0].steps.length > 0
-            ) {
-              const firstStep = selectedRoute.legs[0].steps[0];
-              speakInstruction(
-                `Starting navigation. ${firstStep.html_instructions}`
-              );
-            }
+        // Animate to 3D view with camera facing route direction
+        mapRef.current.animateCamera({
+          center: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
           },
-        },
-      ]
-    );
+          pitch: 45, // Tilt camera for 3D view
+          heading: bearing, // Orient camera towards route direction
+          zoom: 18, // Closer zoom level for navigation
+          altitude: 500, // Optional: control viewing height
+        }, { duration: 1000 }); // Smooth animation over 1 second
+      }
+    }
   };
 
   const handleStopNavigation = () => {
@@ -1032,7 +1013,6 @@ export default function HomeScreen() {
             setEstimatedArrival(null);
             setRouteProgress(0);
             setDistanceToNextStep(0);
-            setSpokenInstructions(new Set());
 
             // Stop location tracking
             if (locationWatcher) {
@@ -1040,8 +1020,7 @@ export default function HomeScreen() {
               setLocationWatcher(null);
             }
 
-            // Stop any ongoing speech
-            Speech.stop();
+            // Navigation stopped
 
             console.log("🛑 Live navigation stopped");
           },
@@ -1334,7 +1313,18 @@ export default function HomeScreen() {
             rotateEnabled={true}
             scrollEnabled={true} // Always allow map interaction
             zoomEnabled={true}
-            followsUserLocation={false} // Don't auto-follow to allow manual exploration
+            followsUserLocation={isNavigating} // Auto-follow during navigation
+            heading={isNavigating ? currentHeading : 0} // Keep forward direction up during navigation
+            camera={isNavigating ? {
+              center: {
+                latitude: liveLocation?.coords.latitude || location.coords.latitude,
+                longitude: liveLocation?.coords.longitude || location.coords.longitude,
+              },
+              pitch: 45,
+              heading: currentHeading,
+              altitude: 500,
+              zoom: 18,
+            } : undefined}
           >
             {/* Current location marker - custom during navigation */}
             {(location || liveLocation) && (
@@ -1495,28 +1485,11 @@ export default function HomeScreen() {
             <View style={styles.navigationPanel}>
               <View style={styles.navigationHeader}>
                 <View style={styles.navigationInfo}>
-                  <Ionicons
-                    name={
-                      getCurrentStep()
-                        ? getManeuverIcon(getCurrentStep().maneuver)
-                        : "navigate-circle"
-                    }
-                    size={24}
-                    color={COLORS.mutedTeal}
-                  />
                   <View style={styles.navigationText}>
-                    <Text style={styles.navigationTitle}>
-                      {Math.round(routeProgress)}% to {destination}
-                    </Text>
+                    <Text style={styles.navigationTitle}>{destination}</Text>
                     <Text style={styles.navigationSubtitle}>
                       {estimatedArrival &&
                         `ETA: ${estimatedArrival.toLocaleTimeString()}`}
-                      {distanceToNextStep > 0 &&
-                        ` • ${
-                          distanceToNextStep < 1000
-                            ? `${Math.round(distanceToNextStep)}m`
-                            : `${(distanceToNextStep / 1000).toFixed(1)}km`
-                        } to next turn`}
                     </Text>
                   </View>
                 </View>
@@ -1539,28 +1512,6 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
-
-              {/* Progress bar */}
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${routeProgress}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.progressText}>
-                  {Math.round(routeProgress)}%
-                </Text>
-              </View>
-
-              <View style={styles.instructionContainer}>
-                <Text style={styles.instructionText}>
-                  {getInstructionWithDistance()}
-                </Text>
-              </View>
-
               <View style={styles.safetyFeatures}>
                 <View style={styles.safetyFeature}>
                   <Ionicons
@@ -1570,12 +1521,6 @@ export default function HomeScreen() {
                   />
                   <Text style={styles.safetyFeatureText}>Live Tracking</Text>
                 </View>
-                {isAICompanionActive && (
-                  <View style={styles.safetyFeature}>
-                    <Ionicons name="mic" size={16} color={COLORS.mutedTeal} />
-                    <Text style={styles.safetyFeatureText}>Voice Guidance</Text>
-                  </View>
-                )}
                 <View style={styles.safetyFeature}>
                   <Ionicons
                     name="location"
@@ -1583,12 +1528,10 @@ export default function HomeScreen() {
                     color={COLORS.mutedTeal}
                   />
                   <Text style={styles.safetyFeatureText}>
-                    Step {currentStepIndex + 1} of{" "}
-                    {selectedRoute.legs?.[0]?.steps?.length || 0}
+                    Navigation Active
                   </Text>
                 </View>
-              </View>
-
+              </View>{" "}
               {/* Stop Navigation Button inside the panel */}
               <TouchableOpacity
                 style={styles.stopNavigationButton}
@@ -1799,7 +1742,7 @@ const styles = StyleSheet.create({
   },
   sosButton: {
     position: "absolute",
-    top: SPACING.md,
+    top: SPACING.xl * 3, // Moved lower from the top
     right: SPACING.md,
     backgroundColor: COLORS.warningRed,
     width: 70,
@@ -1817,13 +1760,13 @@ const styles = StyleSheet.create({
   },
   companionButton: {
     position: "absolute",
-    bottom: SPACING.xl + 60, // Position above the default location button (60px for button + spacing)
+    top: SPACING.xl * 3 + 80, // Position below SOS button (70px height + 10px spacing)
     right: SPACING.md,
     backgroundColor: COLORS.warmBeige,
     borderWidth: 2,
     borderColor: COLORS.mutedTeal,
-    width: 80,
-    height: 80,
+    width: 70,
+    height: 70,
     borderRadius: BORDER_RADIUS.full,
     justifyContent: "center",
     alignItems: "center",
@@ -1844,7 +1787,7 @@ const styles = StyleSheet.create({
   },
   centerLocationButton: {
     position: "absolute",
-    bottom: SPACING.xl + 60 + 90, // Position above AI companion button
+    bottom: "30%", // Positioned in the middle-lower section of the screen
     right: SPACING.md,
     backgroundColor: COLORS.white,
     borderWidth: 2,
