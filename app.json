@@ -11,7 +11,10 @@
     "extra": {
       "GOOGLE_MAPS_API_KEY": "AIzaSyDMuuZVn6uDZj5xvBjlHkEqfnMW12jIgbA",
       "GOOGLE_MAPS_WALKING_RADIUS": 2000,
-      "GOOGLE_MAPS_MAX_ROUTES": 3
+      "GOOGLE_MAPS_MAX_ROUTES": 3,
+      "eas": {
+        "projectId": "a22af39f-159f-41cd-aee5-5b40c4f9f774"
+      }
     },
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -31,6 +34,7 @@
       }
     },
     "android": {
+      "package": "com.midnightmile.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -41,7 +45,9 @@
         "ACCESS_FINE_LOCATION",
         "RECORD_AUDIO",
         "READ_CONTACTS",
-        "CALL_PHONE"
+        "CALL_PHONE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "config": {
         "googleMaps": {
