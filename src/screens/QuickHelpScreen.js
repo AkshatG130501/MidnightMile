@@ -17,9 +17,35 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from "../constants/theme";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function QuickHelpScreen() {
   const [isSOSActive, setIsSOSActive] = useState(false);
+  const { user, signOut } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out of Midnight Mile?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              Alert.alert("Error", "Failed to sign out. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const emergencyContacts = [
     {
@@ -259,6 +285,40 @@ export default function QuickHelpScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.accountContainer}>
+            <View style={styles.userInfo}>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarText}>
+                  {user?.user_metadata?.full_name
+                    ? user.user_metadata.full_name.charAt(0).toUpperCase()
+                    : user?.email?.charAt(0).toUpperCase() || "U"}
+                </Text>
+              </View>
+              <View style={styles.userDetails}>
+                <Text style={styles.userName}>
+                  {user?.user_metadata?.full_name || "User"}
+                </Text>
+                <Text style={styles.userEmail}>{user?.email}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={handleLogout}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={20}
+                color={COLORS.warningRed}
+              />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -426,5 +486,60 @@ const styles = StyleSheet.create({
   resourceSubtitle: {
     fontSize: FONTS.sizes.small,
     color: COLORS.slateGray,
+  },
+  accountContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    ...SHADOWS.light,
+  },
+  userInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.md,
+  },
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.mutedTeal,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: SPACING.md,
+  },
+  userAvatarText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.large,
+    fontWeight: FONTS.weights.semibold,
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: FONTS.sizes.medium,
+    fontWeight: FONTS.weights.semibold,
+    color: COLORS.deepNavy,
+    marginBottom: SPACING.xs,
+  },
+  userEmail: {
+    fontSize: FONTS.sizes.small,
+    color: COLORS.slateGray,
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.warmBeige,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.warningRed,
+  },
+  logoutText: {
+    fontSize: FONTS.sizes.medium,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.warningRed,
+    marginLeft: SPACING.sm,
   },
 });

@@ -12,14 +12,22 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from "../constants/theme";
+import * as WebBrowser from "expo-web-browser";
+import {
+  COLORS,
+  FONTS,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+} from "../constants/theme";
+import { useAuth } from "../contexts/AuthContext";
 import { AuthService } from "../services/AuthService";
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { signIn, signInWithGoogle, signInWithApple, loading } = useAuth();
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -27,54 +35,122 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
-    setLoading(true);
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Error", "Please enter a valid email address");
+      return;
+    }
+
     try {
-      const result = await AuthService.signIn(email.trim(), password);
+      const result = await signIn(email.trim(), password);
 
       if (result.success) {
-        // Navigate to main app
-        navigation.replace("Main");
+        // Don't navigate manually - let AuthContext handle it
+        // The navigation will happen automatically when user state updates
       } else {
         Alert.alert("Login Failed", result.error);
       }
     } catch (error) {
       Alert.alert("Error", "An unexpected error occurred. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
+    console.log("LoginScreen: Starting Google Sign In");
     try {
       const result = await AuthService.signInWithGoogle();
+      console.log("LoginScreen: Google Sign In result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("LoginScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("LoginScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "LoginScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("LoginScreen: User cancelled OAuth");
+          Alert.alert("Sign In Cancelled", "Google sign in was cancelled.");
+        } else {
+          console.log("LoginScreen: OAuth failed or dismissed:", browserResult);
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign In Failed",
+              "Google sign in failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Google Sign In Failed", result.error);
+        console.error("LoginScreen: Google Sign In failed:", result.error);
+        Alert.alert(
+          "Google Sign In Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("LoginScreen: Google Sign In error:", error);
       Alert.alert("Error", "Google sign in failed. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleAppleSignIn = async () => {
-    setLoading(true);
+    console.log("LoginScreen: Starting Apple Sign In");
     try {
       const result = await AuthService.signInWithApple();
+      console.log("LoginScreen: Apple Sign In result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("LoginScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("LoginScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "LoginScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("LoginScreen: User cancelled OAuth");
+          Alert.alert("Sign In Cancelled", "Apple sign in was cancelled.");
+        } else {
+          console.log("LoginScreen: OAuth failed or dismissed:", browserResult);
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign In Failed",
+              "Apple sign in failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Apple Sign In Failed", result.error);
+        console.error("LoginScreen: Apple Sign In failed:", result.error);
+        Alert.alert(
+          "Apple Sign In Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("LoginScreen: Apple Sign In error:", error);
       Alert.alert("Error", "Apple sign in failed. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -143,9 +219,7 @@ export default function LoginScreen({ navigation }) {
 
             <TouchableOpacity
               style={styles.forgotPassword}
-              onPress={() => {
-                /* Navigate to forgot password */
-              }}
+              onPress={() => navigation.navigate("ForgotPassword")}
             >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
@@ -265,6 +339,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     color: COLORS.deepNavy,
     backgroundColor: COLORS.white,
+    ...SHADOWS.light,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -273,6 +348,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.neutralGray,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.white,
+    ...SHADOWS.light,
   },
   passwordInput: {
     flex: 1,
@@ -301,6 +377,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: SPACING.lg,
+    ...SHADOWS.medium,
   },
   disabledButton: {
     opacity: 0.6,
@@ -341,6 +418,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.warmBeige,
     borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: SPACING.xs,
+    ...SHADOWS.light,
   },
   socialButtonText: {
     fontSize: FONTS.sizes.medium,
