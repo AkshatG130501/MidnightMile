@@ -12,7 +12,15 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from "../constants/theme";
+import * as WebBrowser from "expo-web-browser";
+import {
+  COLORS,
+  FONTS,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+} from "../constants/theme";
+import { useAuth } from "../contexts/AuthContext";
 import { AuthService } from "../services/AuthService";
 
 export default function SignUpScreen({ navigation }) {
@@ -22,7 +30,7 @@ export default function SignUpScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { signUp, signInWithGoogle, signInWithApple, loading } = useAuth();
 
   const handleSignUp = async () => {
     if (
@@ -32,6 +40,13 @@ export default function SignUpScreen({ navigation }) {
       !confirmPassword.trim()
     ) {
       Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Error", "Please enter a valid email address");
       return;
     }
 
@@ -45,62 +60,121 @@ export default function SignUpScreen({ navigation }) {
       return;
     }
 
-    setLoading(true);
     try {
-      const result = await AuthService.signUp(
-        email.trim(),
-        password,
-        fullName.trim()
-      );
+      const result = await signUp(email.trim(), password, fullName.trim());
 
       if (result.success) {
-        Alert.alert("Success", result.message, [
-          {
-            text: "OK",
-            onPress: () => navigation.replace("Login"),
-          },
-        ]);
+        // Don't navigate manually - let AuthContext handle it
+        // The navigation will happen automatically when user state updates
       } else {
         Alert.alert("Sign Up Failed", result.error);
       }
     } catch (error) {
       Alert.alert("Error", "An unexpected error occurred. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleGoogleSignUp = async () => {
-    setLoading(true);
+    console.log("SignUpScreen: Starting Google Sign Up");
     try {
       const result = await AuthService.signInWithGoogle();
+      console.log("SignUpScreen: Google Sign Up result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("SignUpScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("SignUpScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "SignUpScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("SignUpScreen: User cancelled OAuth");
+          Alert.alert("Sign Up Cancelled", "Google sign up was cancelled.");
+        } else {
+          console.log(
+            "SignUpScreen: OAuth failed or dismissed:",
+            browserResult
+          );
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign Up Failed",
+              "Google sign up failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Google Sign Up Failed", result.error);
+        console.error("SignUpScreen: Google Sign Up failed:", result.error);
+        Alert.alert(
+          "Google Sign Up Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("SignUpScreen: Google Sign Up error:", error);
       Alert.alert("Error", "Google sign up failed. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleAppleSignUp = async () => {
-    setLoading(true);
+    console.log("SignUpScreen: Starting Apple Sign Up");
     try {
       const result = await AuthService.signInWithApple();
+      console.log("SignUpScreen: Apple Sign Up result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("SignUpScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("SignUpScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "SignUpScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("SignUpScreen: User cancelled OAuth");
+          Alert.alert("Sign Up Cancelled", "Apple sign up was cancelled.");
+        } else {
+          console.log(
+            "SignUpScreen: OAuth failed or dismissed:",
+            browserResult
+          );
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign Up Failed",
+              "Apple sign up failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Apple Sign Up Failed", result.error);
+        console.error("SignUpScreen: Apple Sign Up failed:", result.error);
+        Alert.alert(
+          "Apple Sign Up Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("SignUpScreen: Apple Sign Up error:", error);
       Alert.alert("Error", "Apple sign up failed. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -319,6 +393,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     color: COLORS.deepNavy,
     backgroundColor: COLORS.white,
+    ...SHADOWS.light,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -327,6 +402,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.neutralGray,
     borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.white,
+    ...SHADOWS.light,
   },
   passwordInput: {
     flex: 1,
@@ -347,6 +423,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
+    ...SHADOWS.medium,
   },
   disabledButton: {
     opacity: 0.6,
@@ -387,6 +464,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.warmBeige,
     borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: SPACING.xs,
+    ...SHADOWS.light,
   },
   socialButtonText: {
     fontSize: FONTS.sizes.medium,

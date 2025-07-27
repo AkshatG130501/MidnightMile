@@ -1,10 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';
 
-// Temporary: Use hardcoded values to test if @env import is causing issues
-const supabaseUrl = "https://gepwiodjsgqudehxkuvv.supabase.co";
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlcHdpb2Rqc2dxdWRlaHhrdXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM1MzYwOTcsImV4cCI6MjA2OTExMjA5N30.uKjbJhsqQhTyt5lIlnPYk4DlGGVPr317nFKhds7iz_E";
+const supabaseUrl = 'https://tobfgrcywivlvlaygguq.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvYmZncmN5d2l2bHZsYXlnZ3VxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2MTY2MTUsImV4cCI6MjA2OTE5MjYxNX0.e6ZPrry72oOQDD4oDozF5M9j3JDjdAMksBiJiMZIOe4';
 
 // TODO: Re-enable environment variables once app is working
 // import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';

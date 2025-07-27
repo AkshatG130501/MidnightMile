@@ -9,8 +9,10 @@ import {
   Animated,
   Image,
   Alert,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from "../constants/theme";
 import { AuthService } from "../services/AuthService";
 
@@ -24,14 +26,20 @@ export default function LandingScreen({ navigation }) {
   const authOptionsTranslateY = new Animated.Value(50);
 
   useEffect(() => {
+    console.log("LandingScreen: Component mounted");
+
     // Show logo and brand name for 500ms, then start transition
     const timer = setTimeout(() => {
+      console.log("LandingScreen: Auto-starting transition after 500ms");
       startTransition();
     }, 500);
 
     // Fallback: ensure auth options show after 2 seconds regardless
     const fallbackTimer = setTimeout(() => {
       if (!showAuthOptions) {
+        console.log(
+          "LandingScreen: Fallback timer triggered - showing auth options"
+        );
         setShowAuthOptions(true);
       }
     }, 2000);
@@ -39,11 +47,13 @@ export default function LandingScreen({ navigation }) {
     // Show tap hint after 3 seconds if nothing happened
     const hintTimer = setTimeout(() => {
       if (!showAuthOptions) {
+        console.log("LandingScreen: Showing tap hint after 3 seconds");
         setShowTapHint(true);
       }
     }, 3000);
 
     return () => {
+      console.log("LandingScreen: Cleaning up timers");
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
       clearTimeout(hintTimer);
@@ -51,6 +61,7 @@ export default function LandingScreen({ navigation }) {
   }, [showAuthOptions]);
 
   const startTransition = () => {
+    console.log("LandingScreen: Starting transition animation");
     setShowAuthOptions(true);
 
     // Animate logo moving up
@@ -58,7 +69,9 @@ export default function LandingScreen({ navigation }) {
       toValue: -height * 0.18,
       duration: 500,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      console.log("LandingScreen: Logo animation completed");
+    });
 
     // Animate auth options appearing
     Animated.parallel([
@@ -74,41 +87,121 @@ export default function LandingScreen({ navigation }) {
         delay: 200,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+      console.log("LandingScreen: Auth options animation completed");
+    });
   };
 
   const handleLogin = () => {
+    console.log("LandingScreen: Navigating to Login screen");
     navigation.navigate("Login");
   };
 
   const handleSignUp = () => {
+    console.log("LandingScreen: Navigating to SignUp screen");
     navigation.navigate("SignUp");
   };
 
   const handleGoogleSignIn = async () => {
+    console.log("LandingScreen: Starting Google Sign In");
     try {
       const result = await AuthService.signInWithGoogle();
+      console.log("LandingScreen: Google Sign In result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("LandingScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("LandingScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "LandingScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("LandingScreen: User cancelled OAuth");
+          Alert.alert("Sign In Cancelled", "Google sign in was cancelled.");
+        } else {
+          console.log(
+            "LandingScreen: OAuth failed or dismissed:",
+            browserResult
+          );
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign In Failed",
+              "Google sign in failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Google Sign In Failed", result.error);
+        console.error("LandingScreen: Google Sign In failed:", result.error);
+        Alert.alert(
+          "Google Sign In Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("LandingScreen: Google Sign In error:", error);
       Alert.alert("Error", "Google sign in failed. Please try again.");
     }
   };
 
   const handleAppleSignIn = async () => {
+    console.log("LandingScreen: Starting Apple Sign In");
     try {
       const result = await AuthService.signInWithApple();
+      console.log("LandingScreen: Apple Sign In result:", result);
 
-      if (result.success) {
-        navigation.replace("Main");
+      if (result.success && result.data?.url) {
+        console.log("LandingScreen: Opening OAuth URL:", result.data.url);
+
+        // Open the OAuth URL in the browser with both possible redirect schemes
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.data.url,
+          ["midnightmile://auth", "exp://"]
+        );
+
+        console.log("LandingScreen: Browser result:", browserResult);
+
+        if (browserResult.type === "success") {
+          console.log(
+            "LandingScreen: OAuth completed successfully, URL:",
+            browserResult.url
+          );
+          // The auth state will be updated automatically via the deep link handler
+        } else if (browserResult.type === "cancel") {
+          console.log("LandingScreen: User cancelled OAuth");
+          Alert.alert("Sign In Cancelled", "Apple sign in was cancelled.");
+        } else {
+          console.log(
+            "LandingScreen: OAuth failed or dismissed:",
+            browserResult
+          );
+          // Don't show error for "dismiss" type as it might still be successful
+          if (browserResult.type !== "dismiss") {
+            Alert.alert(
+              "Sign In Failed",
+              "Apple sign in failed. Please try again."
+            );
+          }
+        }
       } else {
-        Alert.alert("Apple Sign In Failed", result.error);
+        console.error("LandingScreen: Apple Sign In failed:", result.error);
+        Alert.alert(
+          "Apple Sign In Failed",
+          result.error || "Unknown error occurred"
+        );
       }
     } catch (error) {
+      console.error("LandingScreen: Apple Sign In error:", error);
       Alert.alert("Error", "Apple sign in failed. Please try again.");
     }
   };
@@ -121,7 +214,14 @@ export default function LandingScreen({ navigation }) {
           style={styles.logoSectionTouchable}
           onPress={() => {
             if (!showAuthOptions) {
+              console.log(
+                "LandingScreen: User tapped logo - starting transition"
+              );
               startTransition();
+            } else {
+              console.log(
+                "LandingScreen: User tapped logo but auth options already showing"
+              );
             }
           }}
           activeOpacity={showAuthOptions ? 1 : 0.7}
