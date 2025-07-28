@@ -16,23 +16,24 @@
     "@react-navigation/stack": "^7.4.3",
     "@supabase/supabase-js": "^2.52.1",
     "expo": "~53.0.20",
+    "expo-auth-session": "~6.2.1",
     "expo-av": "~15.1.7",
     "expo-constants": "~17.1.7",
     "expo-contacts": "~14.2.5",
+    "expo-crypto": "~14.1.5",
     "expo-linking": "~7.1.7",
     "expo-location": "~18.1.6",
     "expo-permissions": "^14.4.0",
+    "expo-sms": "^13.1.4",
     "expo-speech": "~13.1.7",
     "expo-status-bar": "~2.2.3",
+    "expo-web-browser": "~14.2.0",
     "react": "19.0.0",
     "react-native": "0.79.5",
     "react-native-dotenv": "^3.4.11",
     "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "~4.11.1",
-    "expo-auth-session": "~6.2.1",
-    "expo-crypto": "~14.1.5",
-    "expo-web-browser": "~14.2.0"
+    "react-native-screens": "~4.11.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

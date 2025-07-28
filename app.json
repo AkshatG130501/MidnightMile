@@ -46,8 +46,10 @@
         "RECORD_AUDIO",
         "READ_CONTACTS",
         "CALL_PHONE",
+        "SEND_SMS",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.SEND_SMS"
       ],
       "config": {
         "googleMaps": {
