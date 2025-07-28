@@ -86,6 +86,16 @@ export const SHADOWS = {
     shadowRadius: 8,
     elevation: 8,
   },
+  large: {
+    shadowColor: COLORS.deepNavy,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 12,
+  },
 };
 
 export const SAFETY_LEVELS = {

@@ -73,8 +73,10 @@ export class GoogleMapsService {
   // Get ALL possible walking routes only
   static async getAllPossibleRoutes(origin, destination) {
     try {
-      console.log("🗺️ Getting all possible walking routes with alternatives...");
-      
+      console.log(
+        "🗺️ Getting all possible walking routes with alternatives..."
+      );
+
       // Get multiple sets of routes with different parameters for diversity
       const routeSets = await Promise.all([
         // Standard walking routes
@@ -100,7 +102,9 @@ export class GoogleMapsService {
 
       // Remove duplicate routes (those with very similar polylines)
       const uniqueRoutes = this.deduplicateRoutes(allRoutes);
-      console.log(`📊 Found ${allRoutes.length} total routes, ${uniqueRoutes.length} unique routes`);
+      console.log(
+        `📊 Found ${allRoutes.length} total routes, ${uniqueRoutes.length} unique routes`
+      );
 
       const processedRoutes = uniqueRoutes.map((route, index) => {
         const safetyScore = this.calculateSafetyScore(route);
@@ -129,7 +133,12 @@ export class GoogleMapsService {
       console.error("Error getting all possible walking routes:", error);
       // Fallback to basic routes if enhanced method fails
       try {
-        const basicRoutes = await this.getDirections(origin, destination, "walking", true);
+        const basicRoutes = await this.getDirections(
+          origin,
+          destination,
+          "walking",
+          true
+        );
         return basicRoutes.map((route, index) => {
           const safetyScore = this.calculateSafetyScore(route);
           return {
@@ -174,7 +183,9 @@ export class GoogleMapsService {
       if (data.status === "OK") {
         return data.routes;
       } else {
-        console.log(`⚠️ Routes with avoid=${avoid} returned status: ${data.status}`);
+        console.log(
+          `⚠️ Routes with avoid=${avoid} returned status: ${data.status}`
+        );
         return []; // Return empty array if this variant fails
       }
     } catch (error) {
@@ -195,10 +206,12 @@ export class GoogleMapsService {
         uniqueRoutes.push(route);
       } else if (!polyline) {
         // If no polyline, check by steps similarity
-        const stepsSignature = route.legs?.[0]?.steps?.slice(0, 3)
-          ?.map(step => step.html_instructions?.substring(0, 50))
-          ?.join("|") || "";
-        
+        const stepsSignature =
+          route.legs?.[0]?.steps
+            ?.slice(0, 3)
+            ?.map((step) => step.html_instructions?.substring(0, 50))
+            ?.join("|") || "";
+
         if (!seenPolylines.has(stepsSignature)) {
           seenPolylines.add(stepsSignature);
           uniqueRoutes.push(route);
@@ -251,7 +264,11 @@ export class GoogleMapsService {
       // Positive factors (well-lit, populated areas)
       if (instruction.includes("main") || instruction.includes("avenue"))
         score += 12;
-      if (instruction.includes("plaza") || instruction.includes("center") || instruction.includes("square"))
+      if (
+        instruction.includes("plaza") ||
+        instruction.includes("center") ||
+        instruction.includes("square")
+      )
         score += 8;
       if (instruction.includes("park") && !instruction.includes("parking"))
         score += 6; // Parks are generally safe during day
@@ -269,9 +286,16 @@ export class GoogleMapsService {
       // Negative factors (isolated, potentially unsafe areas)
       if (instruction.includes("alley") || instruction.includes("lane"))
         score -= 18;
-      if (instruction.includes("under") || instruction.includes("tunnel") || instruction.includes("bridge"))
+      if (
+        instruction.includes("under") ||
+        instruction.includes("tunnel") ||
+        instruction.includes("bridge")
+      )
         score -= 15;
-      if (instruction.includes("industrial") || instruction.includes("warehouse"))
+      if (
+        instruction.includes("industrial") ||
+        instruction.includes("warehouse")
+      )
         score -= 12;
       if (instruction.includes("parking") || instruction.includes("lot"))
         score -= 8;
@@ -279,13 +303,17 @@ export class GoogleMapsService {
         score -= 5; // Trails can be isolated
 
       // Turn complexity (more turns = potentially more confusing/unsafe)
-      if (instruction.includes("turn") || instruction.includes("left") || instruction.includes("right"))
+      if (
+        instruction.includes("turn") ||
+        instruction.includes("left") ||
+        instruction.includes("right")
+      )
         score -= 1;
     });
 
     // Distance factor (shorter routes are generally safer for walking)
     const distance = route.legs[0].distance.value; // in meters
-    if (distance < 500) score += 25;      // Very short = very safe
+    if (distance < 500) score += 25; // Very short = very safe
     else if (distance < 1000) score += 20; // Short = safe
     else if (distance < 2000) score += 10; // Medium = moderately safe
     else if (distance > 3000) score -= 15; // Long = less safe
@@ -293,20 +321,21 @@ export class GoogleMapsService {
 
     // Time factor (routes that take too long might be less safe)
     const duration = route.legs[0].duration.value; // in seconds
-    if (duration < 600) score += 15;       // Under 10 minutes = very safe
+    if (duration < 600) score += 15; // Under 10 minutes = very safe
     else if (duration < 1200) score += 10; // Under 20 minutes = safe
     else if (duration > 1800) score -= 20; // More than 30 minutes = less safe
     else if (duration > 2700) score -= 35; // More than 45 minutes = potentially unsafe
 
     // Route complexity factor (fewer steps = simpler navigation = safer)
-    if (stepCount < 5) score += 10;       // Very simple route
-    else if (stepCount < 10) score += 5;  // Simple route
+    if (stepCount < 5) score += 10; // Very simple route
+    else if (stepCount < 10) score += 5; // Simple route
     else if (stepCount > 20) score -= 10; // Complex route
     else if (stepCount > 30) score -= 20; // Very complex route
 
     // Add some randomness to ensure different routes get different scores
     // This helps with filtering even when routes are similar
-    const routeSignature = route.legs?.[0]?.steps?.[0]?.html_instructions?.length || 0;
+    const routeSignature =
+      route.legs?.[0]?.steps?.[0]?.html_instructions?.length || 0;
     const randomVariation = (routeSignature % 10) - 5; // -5 to +5 variation
     score += randomVariation;
 
@@ -579,6 +608,11 @@ export class GoogleMapsService {
   // Get appropriate map theme based on time of day
   static getMapTheme() {
     return this.isDayTime() ? "light" : "night";
+  }
+
+  // Get immersive map style for route preview - using pure Google Maps style
+  static getImmersiveMapStyle() {
+    return null; // Return null to use default Google Maps style
   }
 
   // Decode polyline for route display

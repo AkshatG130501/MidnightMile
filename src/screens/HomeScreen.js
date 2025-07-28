@@ -28,6 +28,7 @@ import {
 import { GoogleMapsService } from "../services/GoogleMapsService";
 import { GoogleMapsTestUtils } from "../services/GoogleMapsTestUtils";
 import { UserProfileMenu } from "../components/UserProfileMenu";
+import ImmersiveRoutePreview from "../components/ImmersiveRoutePreview";
 
 // Configuration constants
 const MAX_DESTINATION_DISTANCE_MILES = 10;
@@ -55,6 +56,7 @@ export default function HomeScreen() {
   const [routeFilterMode, setRouteFilterMode] = useState("safe"); // "safe", "all", "fastest"
   const [isPreviewingRoute, setIsPreviewingRoute] = useState(false);
   const [previewMapRegion, setPreviewMapRegion] = useState(null);
+  const [showImmersivePreview, setShowImmersivePreview] = useState(false);
 
   // Initialize location tracking
   useEffect(() => {
@@ -1540,53 +1542,8 @@ export default function HomeScreen() {
       return;
     }
 
-    console.log("🔍 Previewing route...");
-    setIsPreviewingRoute(true);
-
-    // Calculate the region that encompasses the entire route
-    const routeCoordinates = GoogleMapsService.decodePolyline(
-      selectedRoute.overview_polyline.points
-    );
-
-    // Find the bounds of the route
-    let minLat = Math.min(location.coords.latitude, destinationCoords.latitude);
-    let maxLat = Math.max(location.coords.latitude, destinationCoords.latitude);
-    let minLng = Math.min(
-      location.coords.longitude,
-      destinationCoords.longitude
-    );
-    let maxLng = Math.max(
-      location.coords.longitude,
-      destinationCoords.longitude
-    );
-
-    // Include all route coordinates in bounds calculation
-    routeCoordinates.forEach((coord) => {
-      minLat = Math.min(minLat, coord.latitude);
-      maxLat = Math.max(maxLat, coord.latitude);
-      minLng = Math.min(minLng, coord.longitude);
-      maxLng = Math.max(maxLng, coord.longitude);
-    });
-
-    // Add padding to the bounds (15% padding)
-    const latPadding = (maxLat - minLat) * 0.15;
-    const lngPadding = (maxLng - minLng) * 0.15;
-
-    const previewRegion = {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max(maxLat - minLat + latPadding, 0.01),
-      longitudeDelta: Math.max(maxLng - minLng + lngPadding, 0.01),
-    };
-
-    setPreviewMapRegion(previewRegion);
-
-    // Animate to the preview region
-    if (mapRef.current) {
-      mapRef.current.animateToRegion(previewRegion, 1000);
-    }
-
-    console.log("✅ Route preview activated");
+    console.log("🔍 Opening immersive route preview...");
+    setShowImmersivePreview(true);
   };
 
   const handleExitPreview = () => {
@@ -1673,896 +1630,931 @@ export default function HomeScreen() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={handleOutsidePress}>
-      <SafeAreaView style={styles.container}>
-        {/* User Profile Menu */}
-        <UserProfileMenu />
+    <>
+      <TouchableWithoutFeedback onPress={handleOutsidePress}>
+        <SafeAreaView style={styles.container}>
+          {/* User Profile Menu */}
+          <UserProfileMenu />
 
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={20} color={COLORS.slateGray} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={`Where are you going? (within ${MAX_DESTINATION_DISTANCE_MILES} miles)`}
-              placeholderTextColor={COLORS.slateGray}
-              value={destination}
-              onChangeText={(text) => {
-                setDestination(text);
-                if (text.length >= 2) {
-                  setShowSuggestions(true);
-                } else if (text.length === 0) {
-                  // Show Google Maps-style suggestions when empty
-                  const hasAnySuggestions =
-                    recentSearches.length > 0 ||
-                    savedPlaces.length > 0 ||
-                    contextualSuggestions.length > 0 ||
-                    nearbySuggestions.length > 0;
-                  setShowSuggestions(hasAnySuggestions);
-                  setAutocompleteSuggestions([]); // Clear autocomplete when text is cleared
-                } else {
-                  // For text length 1, hide suggestions but don't clear autocomplete yet
-                  setShowSuggestions(false);
-                }
-              }}
-              onSubmitEditing={handleDestinationSearch}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-            />
-            <TouchableOpacity
-              onPress={
-                destination.trim()
-                  ? handleClearDestination
-                  : handleDestinationSearch
-              }
-            >
-              <Ionicons
-                name={destination.trim() ? "close" : "arrow-forward"}
-                size={20}
-                color={destination.trim() ? COLORS.slateGray : COLORS.mutedTeal}
+          {/* Search Bar */}
+          <View style={styles.searchContainer}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={20} color={COLORS.slateGray} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={`Where are you going? (within ${MAX_DESTINATION_DISTANCE_MILES} miles)`}
+                placeholderTextColor={COLORS.slateGray}
+                value={destination}
+                onChangeText={(text) => {
+                  setDestination(text);
+                  if (text.length >= 2) {
+                    setShowSuggestions(true);
+                  } else if (text.length === 0) {
+                    // Show Google Maps-style suggestions when empty
+                    const hasAnySuggestions =
+                      recentSearches.length > 0 ||
+                      savedPlaces.length > 0 ||
+                      contextualSuggestions.length > 0 ||
+                      nearbySuggestions.length > 0;
+                    setShowSuggestions(hasAnySuggestions);
+                    setAutocompleteSuggestions([]); // Clear autocomplete when text is cleared
+                  } else {
+                    // For text length 1, hide suggestions but don't clear autocomplete yet
+                    setShowSuggestions(false);
+                  }
+                }}
+                onSubmitEditing={handleDestinationSearch}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
               />
-            </TouchableOpacity>
-          </View>
-
-          {/* Suggestions Dropdown */}
-          {showSuggestions && (
-            <View
-              style={styles.suggestionsContainer}
-              onStartShouldSetResponder={(evt) => {
-                // Only capture touch events if they're not on the ScrollView
-                return false;
-              }}
-              onResponderStart={() => {
-                console.log(`🔥 Suggestions container touch started`);
-                isTouchingRef.current = true;
-                if (blurTimeoutRef.current) {
-                  clearTimeout(blurTimeoutRef.current);
-                  blurTimeoutRef.current = null;
+              <TouchableOpacity
+                onPress={
+                  destination.trim()
+                    ? handleClearDestination
+                    : handleDestinationSearch
                 }
-              }}
-              onResponderEnd={() => {
-                console.log(`🔥 Suggestions container touch ended`);
-                isTouchingRef.current = false;
-              }}
-            >
-              <ScrollView
-                style={styles.suggestionsList}
-                contentContainerStyle={styles.suggestionsContent}
-                nestedScrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-                keyboardShouldPersistTaps="handled"
-                onTouchStart={() => {
+              >
+                <Ionicons
+                  name={destination.trim() ? "close" : "arrow-forward"}
+                  size={20}
+                  color={
+                    destination.trim() ? COLORS.slateGray : COLORS.mutedTeal
+                  }
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Suggestions Dropdown */}
+            {showSuggestions && (
+              <View
+                style={styles.suggestionsContainer}
+                onStartShouldSetResponder={(evt) => {
+                  // Only capture touch events if they're not on the ScrollView
+                  return false;
+                }}
+                onResponderStart={() => {
+                  console.log(`🔥 Suggestions container touch started`);
                   isTouchingRef.current = true;
                   if (blurTimeoutRef.current) {
                     clearTimeout(blurTimeoutRef.current);
                     blurTimeoutRef.current = null;
                   }
                 }}
-                onTouchEnd={() => {
-                  // Don't immediately set to false, let the suggestion selection complete
-                  setTimeout(() => {
-                    if (!isProcessingSuggestion) {
-                      isTouchingRef.current = false;
-                    }
-                  }, 100);
+                onResponderEnd={() => {
+                  console.log(`🔥 Suggestions container touch ended`);
+                  isTouchingRef.current = false;
                 }}
               >
-                {/* Loading state for autocomplete */}
-                {destination.length >= 2 &&
-                  isLoadingAutocomplete &&
-                  autocompleteSuggestions.length === 0 && (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator
-                        size="small"
-                        color={COLORS.mutedTeal}
-                      />
-                      <Text style={styles.loadingText}>
-                        Searching places...
-                      </Text>
-                    </View>
-                  )}
-
-                {/* Autocomplete Results (show when typing and we have results) */}
-                {destination.length >= 2 &&
-                  autocompleteSuggestions.length > 0 && (
-                    <>
-                      <View style={styles.suggestionsHeaderContainer}>
-                        <Text style={styles.suggestionsHeader}>
-                          Search Results
+                <ScrollView
+                  style={styles.suggestionsList}
+                  contentContainerStyle={styles.suggestionsContent}
+                  nestedScrollEnabled={true}
+                  showsVerticalScrollIndicator={true}
+                  keyboardShouldPersistTaps="handled"
+                  onTouchStart={() => {
+                    isTouchingRef.current = true;
+                    if (blurTimeoutRef.current) {
+                      clearTimeout(blurTimeoutRef.current);
+                      blurTimeoutRef.current = null;
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    // Don't immediately set to false, let the suggestion selection complete
+                    setTimeout(() => {
+                      if (!isProcessingSuggestion) {
+                        isTouchingRef.current = false;
+                      }
+                    }, 100);
+                  }}
+                >
+                  {/* Loading state for autocomplete */}
+                  {destination.length >= 2 &&
+                    isLoadingAutocomplete &&
+                    autocompleteSuggestions.length === 0 && (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator
+                          size="small"
+                          color={COLORS.mutedTeal}
+                        />
+                        <Text style={styles.loadingText}>
+                          Searching places...
                         </Text>
-                        {isLoadingAutocomplete && (
-                          <ActivityIndicator
-                            size="small"
-                            color={COLORS.mutedTeal}
-                          />
-                        )}
                       </View>
-                      {autocompleteSuggestions.map((suggestion, index) => (
-                        <TouchableOpacity
-                          key={`auto-${index}`}
-                          style={styles.suggestionItem}
-                          activeOpacity={0.7}
-                          onPressIn={() => {
-                            console.log(
-                              `🔥 Press IN for: ${suggestion.main_text}`
-                            );
-                            isTouchingRef.current = true;
-                            setIsProcessingSuggestion(true);
-                            // Clear any pending blur timeout when user touches
-                            if (blurTimeoutRef.current) {
-                              clearTimeout(blurTimeoutRef.current);
-                              blurTimeoutRef.current = null;
-                            }
-                          }}
-                          onPress={() => {
-                            console.log(
-                              `👆 TouchableOpacity PRESS for suggestion: ${suggestion.main_text}`
-                            );
-                            handleAutocompleteSuggestionSelect(suggestion);
-                          }}
-                          onPressOut={() => {
-                            console.log(
-                              `🔥 Press OUT for: ${suggestion.main_text}`
-                            );
-                            isTouchingRef.current = false;
-                          }}
-                        >
-                          <Ionicons
-                            name="location"
-                            size={16}
-                            color={COLORS.mutedTeal}
-                          />
-                          <View style={styles.suggestionTextContainer}>
-                            {suggestion.type === "message" ? (
-                              <Text style={styles.suggestionMainText}>
-                                {suggestion.title}
-                              </Text>
-                            ) : (
-                              <>
-                                <Text style={styles.suggestionMainText}>
-                                  {suggestion.main_text}
-                                </Text>
-                                {suggestion.secondary_text && (
-                                  <Text style={styles.suggestionSecondaryText}>
-                                    {suggestion.secondary_text}
-                                  </Text>
-                                )}
-                              </>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </>
-                  )}
-
-                {/* Google Maps-style Suggestions (show when no text or short text) */}
-                {destination.length < 2 && (
-                  <>
-                    {/* Distance Limit Info */}
-                    <View style={styles.distanceLimitInfo}>
-                      <Ionicons
-                        name="information-circle"
-                        size={16}
-                        color={COLORS.mutedTeal}
-                      />
-                      <Text style={styles.distanceLimitText}>
-                        For your safety, destinations are limited to{" "}
-                        {MAX_DESTINATION_DISTANCE_MILES} miles from your
-                        location
-                      </Text>
-                    </View>
-
-                    {/* Recent Searches */}
-                    {recentSearches.length > 0 && (
-                      <>
-                        <Text style={styles.suggestionsHeader}>Recent</Text>
-                        {recentSearches.slice(0, 5).map((search, index) => (
-                          <TouchableOpacity
-                            key={`recent-${search.id}`}
-                            style={styles.suggestionItem}
-                            activeOpacity={0.7}
-                            onPressIn={() => {
-                              isTouchingRef.current = true;
-                              if (blurTimeoutRef.current) {
-                                clearTimeout(blurTimeoutRef.current);
-                                blurTimeoutRef.current = null;
-                              }
-                              setIsProcessingSuggestion(true);
-                            }}
-                            onPress={() => {
-                              handleSuggestionSelect(search);
-                            }}
-                            onPressOut={() => {
-                              isTouchingRef.current = false;
-                            }}
-                          >
-                            <Ionicons
-                              name="time"
-                              size={16}
-                              color={COLORS.slateGray}
-                            />
-                            <Text style={styles.suggestionText}>
-                              {search.title}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>
                     )}
 
-                    {/* Saved Places */}
-                    {savedPlaces.length > 0 && (
+                  {/* Autocomplete Results (show when typing and we have results) */}
+                  {destination.length >= 2 &&
+                    autocompleteSuggestions.length > 0 && (
                       <>
-                        <Text style={styles.suggestionsHeader}>
-                          Saved places
-                        </Text>
-                        {savedPlaces.map((place, index) => (
+                        <View style={styles.suggestionsHeaderContainer}>
+                          <Text style={styles.suggestionsHeader}>
+                            Search Results
+                          </Text>
+                          {isLoadingAutocomplete && (
+                            <ActivityIndicator
+                              size="small"
+                              color={COLORS.mutedTeal}
+                            />
+                          )}
+                        </View>
+                        {autocompleteSuggestions.map((suggestion, index) => (
                           <TouchableOpacity
-                            key={`saved-${place.id}`}
+                            key={`auto-${index}`}
                             style={styles.suggestionItem}
                             activeOpacity={0.7}
                             onPressIn={() => {
+                              console.log(
+                                `🔥 Press IN for: ${suggestion.main_text}`
+                              );
                               isTouchingRef.current = true;
+                              setIsProcessingSuggestion(true);
+                              // Clear any pending blur timeout when user touches
                               if (blurTimeoutRef.current) {
                                 clearTimeout(blurTimeoutRef.current);
                                 blurTimeoutRef.current = null;
                               }
-                              setIsProcessingSuggestion(true);
                             }}
                             onPress={() => {
-                              handleSuggestionSelect({
-                                ...place,
-                                type: "saved",
-                              });
+                              console.log(
+                                `👆 TouchableOpacity PRESS for suggestion: ${suggestion.main_text}`
+                              );
+                              handleAutocompleteSuggestionSelect(suggestion);
                             }}
                             onPressOut={() => {
+                              console.log(
+                                `🔥 Press OUT for: ${suggestion.main_text}`
+                              );
                               isTouchingRef.current = false;
                             }}
                           >
                             <Ionicons
-                              name={place.icon}
+                              name="location"
                               size={16}
                               color={COLORS.mutedTeal}
                             />
                             <View style={styles.suggestionTextContainer}>
-                              <Text style={styles.suggestionMainText}>
-                                {place.title}
-                              </Text>
-                              <Text style={styles.suggestionSecondaryText}>
-                                {place.address}
-                              </Text>
+                              {suggestion.type === "message" ? (
+                                <Text style={styles.suggestionMainText}>
+                                  {suggestion.title}
+                                </Text>
+                              ) : (
+                                <>
+                                  <Text style={styles.suggestionMainText}>
+                                    {suggestion.main_text}
+                                  </Text>
+                                  {suggestion.secondary_text && (
+                                    <Text
+                                      style={styles.suggestionSecondaryText}
+                                    >
+                                      {suggestion.secondary_text}
+                                    </Text>
+                                  )}
+                                </>
+                              )}
                             </View>
                           </TouchableOpacity>
                         ))}
                       </>
                     )}
 
-                    {/* Contextual Suggestions */}
-                    {contextualSuggestions.length > 0 && (
-                      <>
-                        <Text style={styles.suggestionsHeader}>
-                          {new Date().getHours() < 12
-                            ? "Morning suggestions"
-                            : new Date().getHours() < 17
-                            ? "Afternoon suggestions"
-                            : new Date().getHours() < 22
-                            ? "Evening suggestions"
-                            : "Safety suggestions"}
+                  {/* Google Maps-style Suggestions (show when no text or short text) */}
+                  {destination.length < 2 && (
+                    <>
+                      {/* Distance Limit Info */}
+                      <View style={styles.distanceLimitInfo}>
+                        <Ionicons
+                          name="information-circle"
+                          size={16}
+                          color={COLORS.mutedTeal}
+                        />
+                        <Text style={styles.distanceLimitText}>
+                          For your safety, destinations are limited to{" "}
+                          {MAX_DESTINATION_DISTANCE_MILES} miles from your
+                          location
                         </Text>
-                        {contextualSuggestions.map((suggestion, index) => (
-                          <TouchableOpacity
-                            key={`contextual-${index}`}
-                            style={styles.suggestionItem}
-                            activeOpacity={0.7}
-                            onPressIn={() => {
-                              isTouchingRef.current = true;
-                              if (blurTimeoutRef.current) {
-                                clearTimeout(blurTimeoutRef.current);
-                                blurTimeoutRef.current = null;
-                              }
-                              setIsProcessingSuggestion(true);
-                            }}
-                            onPress={() => {
-                              handleSuggestionSelect(suggestion);
-                            }}
-                            onPressOut={() => {
-                              isTouchingRef.current = false;
-                            }}
-                          >
-                            <Ionicons
-                              name={suggestion.icon}
-                              size={16}
-                              color={COLORS.mutedTeal}
-                            />
-                            <Text style={styles.suggestionText}>
-                              {suggestion.title}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>
-                    )}
+                      </View>
 
-                    {/* Nearby Safety Spots */}
-                    {nearbySuggestions.length > 0 && (
-                      <>
-                        <Text style={styles.suggestionsHeader}>
-                          Nearby safety spots
-                        </Text>
-                        {nearbySuggestions.map((suggestion, index) => (
-                          <TouchableOpacity
-                            key={`nearby-${index}`}
-                            style={styles.suggestionItem}
-                            activeOpacity={0.7}
-                            onPressIn={() => {
-                              isTouchingRef.current = true;
-                              if (blurTimeoutRef.current) {
-                                clearTimeout(blurTimeoutRef.current);
-                                blurTimeoutRef.current = null;
-                              }
-                              setIsProcessingSuggestion(true);
-                            }}
-                            onPress={() => {
-                              handleSuggestionSelect(suggestion);
-                            }}
-                            onPressOut={() => {
-                              isTouchingRef.current = false;
-                            }}
-                          >
-                            <Ionicons
-                              name={suggestion.icon}
-                              size={16}
-                              color={COLORS.safetyAmber}
-                            />
-                            <Text style={styles.suggestionText}>
-                              {suggestion.title}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>
-                    )}
-                  </>
-                )}
-              </ScrollView>
-            </View>
-          )}
-        </View>
+                      {/* Recent Searches */}
+                      {recentSearches.length > 0 && (
+                        <>
+                          <Text style={styles.suggestionsHeader}>Recent</Text>
+                          {recentSearches.slice(0, 5).map((search, index) => (
+                            <TouchableOpacity
+                              key={`recent-${search.id}`}
+                              style={styles.suggestionItem}
+                              activeOpacity={0.7}
+                              onPressIn={() => {
+                                isTouchingRef.current = true;
+                                if (blurTimeoutRef.current) {
+                                  clearTimeout(blurTimeoutRef.current);
+                                  blurTimeoutRef.current = null;
+                                }
+                                setIsProcessingSuggestion(true);
+                              }}
+                              onPress={() => {
+                                handleSuggestionSelect(search);
+                              }}
+                              onPressOut={() => {
+                                isTouchingRef.current = false;
+                              }}
+                            >
+                              <Ionicons
+                                name="time"
+                                size={16}
+                                color={COLORS.slateGray}
+                              />
+                              <Text style={styles.suggestionText}>
+                                {search.title}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
 
-        {/* Map */}
-        <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            region={isPreviewingRoute ? previewMapRegion : mapRegion}
-            onRegionChangeComplete={isPreviewingRoute ? null : setMapRegion}
-            mapType="standard"
-            showsUserLocation={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
-            showsMyLocationButton={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
-            showsTraffic={false}
-            showsBuildings={true}
-            showsIndoors={true}
-            showsPointsOfInterest={!isPreviewingRoute} // Hide POI during preview for cleaner view
-            showsCompass={!isPreviewingRoute}
-            showsScale={false}
-            rotateEnabled={!isPreviewingRoute}
-            scrollEnabled={true} // Always allow map interaction
-            zoomEnabled={true}
-            followsUserLocation={isNavigating} // Auto-follow during navigation
-            heading={isNavigating ? currentHeading : 0} // Keep forward direction up during navigation
-            camera={
-              isNavigating
-                ? {
-                    center: {
-                      latitude:
-                        liveLocation?.coords.latitude ||
-                        location.coords.latitude,
-                      longitude:
-                        liveLocation?.coords.longitude ||
-                        location.coords.longitude,
-                    },
-                    pitch: 45,
-                    heading: currentHeading,
-                    altitude: 500,
-                    zoom: 18,
-                  }
-                : undefined
-            }
-          >
-            {/* Current location marker - custom during navigation */}
-            {(location || liveLocation) && (
-              <Marker
-                coordinate={{
-                  latitude:
-                    liveLocation?.coords.latitude || location.coords.latitude,
-                  longitude:
-                    liveLocation?.coords.longitude || location.coords.longitude,
-                }}
-                title="Your Location"
-                anchor={{ x: 0.5, y: 0.5 }}
-                rotation={isNavigating ? currentHeading : 0}
-              >
-                {isNavigating ? (
-                  <View style={styles.navigationMarker}>
-                    <Ionicons
-                      name="navigate"
-                      size={24}
-                      color={COLORS.mutedTeal}
-                    />
-                  </View>
-                ) : (
-                  <View style={styles.currentLocationMarker}>
-                    <View style={styles.currentLocationInner} />
-                  </View>
-                )}
-              </Marker>
-            )}
+                      {/* Saved Places */}
+                      {savedPlaces.length > 0 && (
+                        <>
+                          <Text style={styles.suggestionsHeader}>
+                            Saved places
+                          </Text>
+                          {savedPlaces.map((place, index) => (
+                            <TouchableOpacity
+                              key={`saved-${place.id}`}
+                              style={styles.suggestionItem}
+                              activeOpacity={0.7}
+                              onPressIn={() => {
+                                isTouchingRef.current = true;
+                                if (blurTimeoutRef.current) {
+                                  clearTimeout(blurTimeoutRef.current);
+                                  blurTimeoutRef.current = null;
+                                }
+                                setIsProcessingSuggestion(true);
+                              }}
+                              onPress={() => {
+                                handleSuggestionSelect({
+                                  ...place,
+                                  type: "saved",
+                                });
+                              }}
+                              onPressOut={() => {
+                                isTouchingRef.current = false;
+                              }}
+                            >
+                              <Ionicons
+                                name={place.icon}
+                                size={16}
+                                color={COLORS.mutedTeal}
+                              />
+                              <View style={styles.suggestionTextContainer}>
+                                <Text style={styles.suggestionMainText}>
+                                  {place.title}
+                                </Text>
+                                <Text style={styles.suggestionSecondaryText}>
+                                  {place.address}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
 
-            {/* Destination marker */}
-            {destinationCoords && (
-              <Marker
-                coordinate={destinationCoords}
-                title="Destination"
-                description={destinationCoords.address}
-                pinColor={COLORS.safetyAmber}
-              />
-            )}
+                      {/* Contextual Suggestions */}
+                      {contextualSuggestions.length > 0 && (
+                        <>
+                          <Text style={styles.suggestionsHeader}>
+                            {new Date().getHours() < 12
+                              ? "Morning suggestions"
+                              : new Date().getHours() < 17
+                              ? "Afternoon suggestions"
+                              : new Date().getHours() < 22
+                              ? "Evening suggestions"
+                              : "Safety suggestions"}
+                          </Text>
+                          {contextualSuggestions.map((suggestion, index) => (
+                            <TouchableOpacity
+                              key={`contextual-${index}`}
+                              style={styles.suggestionItem}
+                              activeOpacity={0.7}
+                              onPressIn={() => {
+                                isTouchingRef.current = true;
+                                if (blurTimeoutRef.current) {
+                                  clearTimeout(blurTimeoutRef.current);
+                                  blurTimeoutRef.current = null;
+                                }
+                                setIsProcessingSuggestion(true);
+                              }}
+                              onPress={() => {
+                                handleSuggestionSelect(suggestion);
+                              }}
+                              onPressOut={() => {
+                                isTouchingRef.current = false;
+                              }}
+                            >
+                              <Ionicons
+                                name={suggestion.icon}
+                                size={16}
+                                color={COLORS.mutedTeal}
+                              />
+                              <Text style={styles.suggestionText}>
+                                {suggestion.title}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
 
-            {/* Route polyline */}
-            {selectedRoute && selectedRoute.overview_polyline && (
-              <Polyline
-                coordinates={GoogleMapsService.decodePolyline(
-                  selectedRoute.overview_polyline.points
-                )}
-                strokeColor={SAFETY_LEVELS[selectedRoute.safetyLevel].color}
-                strokeWidth={isNavigating ? 6 : 4}
-                strokeOpacity={0.8}
-              />
-            )}
-
-            {/* Navigation progress polyline - shows completed route */}
-            {isNavigating && selectedRoute && liveLocation && (
-              <Polyline
-                coordinates={[
-                  {
-                    latitude: location.coords.latitude,
-                    longitude: location.coords.longitude,
-                  },
-                  {
-                    latitude: liveLocation.coords.latitude,
-                    longitude: liveLocation.coords.longitude,
-                  },
-                ]}
-                strokeColor={COLORS.safeGreen}
-                strokeWidth={4}
-                strokeOpacity={0.9}
-              />
-            )}
-
-            {/* Safe spots markers - hide during preview for cleaner view */}
-            {!isPreviewingRoute &&
-              safeSpots.map((spot, index) => (
-                <Marker
-                  key={`${spot.type}-${spot.id}-${index}`}
-                  coordinate={spot.coordinate}
-                  title={spot.name || spot.title}
-                  description={`Safe spot: ${spot.type} • ${
-                    spot.distance || "Nearby"
-                  }`}
-                >
-                  <View
-                    style={[
-                      styles.customMarker,
-                      { backgroundColor: getSpotColor(spot.type) },
-                    ]}
-                  >
-                    <Ionicons
-                      name={getMarkerIcon(spot.type)}
-                      size={14}
-                      color={COLORS.white}
-                    />
-                  </View>
-                </Marker>
-              ))}
-          </MapView>
-
-          {/* Route Preview Overlay */}
-          {isPreviewingRoute && (
-            <View style={styles.routePreviewOverlay}>
-              <View style={styles.previewHeader}>
-                <Text style={styles.previewTitle}>Route Preview</Text>
-                <TouchableOpacity
-                  style={styles.exitPreviewButton}
-                  onPress={handleExitPreview}
-                >
-                  <Ionicons name="close" size={24} color={COLORS.white} />
-                </TouchableOpacity>
+                      {/* Nearby Safety Spots */}
+                      {nearbySuggestions.length > 0 && (
+                        <>
+                          <Text style={styles.suggestionsHeader}>
+                            Nearby safety spots
+                          </Text>
+                          {nearbySuggestions.map((suggestion, index) => (
+                            <TouchableOpacity
+                              key={`nearby-${index}`}
+                              style={styles.suggestionItem}
+                              activeOpacity={0.7}
+                              onPressIn={() => {
+                                isTouchingRef.current = true;
+                                if (blurTimeoutRef.current) {
+                                  clearTimeout(blurTimeoutRef.current);
+                                  blurTimeoutRef.current = null;
+                                }
+                                setIsProcessingSuggestion(true);
+                              }}
+                              onPress={() => {
+                                handleSuggestionSelect(suggestion);
+                              }}
+                              onPressOut={() => {
+                                isTouchingRef.current = false;
+                              }}
+                            >
+                              <Ionicons
+                                name={suggestion.icon}
+                                size={16}
+                                color={COLORS.safetyAmber}
+                              />
+                              <Text style={styles.suggestionText}>
+                                {suggestion.title}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </ScrollView>
               </View>
-              <View style={styles.previewInfo}>
-                <Text style={styles.previewRouteText}>
-                  {selectedRoute?.estimatedTime} • {selectedRoute?.distance}
-                </Text>
-                <Text style={styles.previewSafetyText}>
-                  Safety Score: {selectedRoute?.safetyScore || 0}/100
-                </Text>
-              </View>
-            </View>
-          )}
+            )}
+          </View>
 
-          {/* SOS Button - hide during preview */}
-          {!isPreviewingRoute && (
-            <TouchableOpacity style={styles.sosButton} onPress={handleSOS}>
-              <Ionicons name="warning" size={24} color={COLORS.white} />
-              <Text style={styles.sosText}>SOS</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* AI Companion Button - hide during preview */}
-          {!isPreviewingRoute && (
-            <TouchableOpacity
-              style={[
-                styles.companionButton,
-                isAICompanionActive && styles.companionButtonActive,
-              ]}
-              onPress={toggleAICompanion}
+          {/* Map */}
+          <View style={styles.mapContainer}>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              provider={PROVIDER_GOOGLE}
+              region={isPreviewingRoute ? previewMapRegion : mapRegion}
+              onRegionChangeComplete={isPreviewingRoute ? null : setMapRegion}
+              mapType="standard"
+              showsUserLocation={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
+              showsMyLocationButton={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
+              showsTraffic={false}
+              showsBuildings={true}
+              showsIndoors={true}
+              showsPointsOfInterest={!isPreviewingRoute} // Hide POI during preview for cleaner view
+              showsCompass={!isPreviewingRoute}
+              showsScale={false}
+              rotateEnabled={!isPreviewingRoute}
+              scrollEnabled={true} // Always allow map interaction
+              zoomEnabled={true}
+              followsUserLocation={isNavigating} // Auto-follow during navigation
+              heading={isNavigating ? currentHeading : 0} // Keep forward direction up during navigation
+              camera={
+                isNavigating
+                  ? {
+                      center: {
+                        latitude:
+                          liveLocation?.coords.latitude ||
+                          location.coords.latitude,
+                        longitude:
+                          liveLocation?.coords.longitude ||
+                          location.coords.longitude,
+                      },
+                      pitch: 45,
+                      heading: currentHeading,
+                      altitude: 500,
+                      zoom: 18,
+                    }
+                  : undefined
+              }
             >
-              <Ionicons
-                name={isAICompanionActive ? "mic" : "mic-off"}
-                size={24}
-                color={isAICompanionActive ? COLORS.white : COLORS.mutedTeal}
-              />
-              <Text
-                style={[
-                  styles.companionText,
-                  isAICompanionActive && styles.companionTextActive,
-                ]}
-              >
-                {isAICompanionActive ? "AI On" : "AI Off"}
-              </Text>
-            </TouchableOpacity>
-          )}
+              {/* Current location marker - custom during navigation */}
+              {(location || liveLocation) && (
+                <Marker
+                  coordinate={{
+                    latitude:
+                      liveLocation?.coords.latitude || location.coords.latitude,
+                    longitude:
+                      liveLocation?.coords.longitude ||
+                      location.coords.longitude,
+                  }}
+                  title="Your Location"
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  rotation={isNavigating ? currentHeading : 0}
+                >
+                  {isNavigating ? (
+                    <View style={styles.navigationMarker}>
+                      <Ionicons
+                        name="navigate"
+                        size={24}
+                        color={COLORS.mutedTeal}
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.currentLocationMarker}>
+                      <View style={styles.currentLocationInner} />
+                    </View>
+                  )}
+                </Marker>
+              )}
 
-          {/* Zoom Controls - show when route is selected and not navigating */}
-          {selectedRoute && !isNavigating && (
-            <View style={styles.zoomControls}>
-              <TouchableOpacity
-                style={styles.zoomButton}
-                onPress={handleZoomIn}
-              >
-                <Ionicons name="add" size={20} color={COLORS.mutedTeal} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.zoomButton}
-                onPress={handleZoomOut}
-              >
-                <Ionicons name="remove" size={20} color={COLORS.mutedTeal} />
-              </TouchableOpacity>
-            </View>
-          )}
+              {/* Destination marker */}
+              {destinationCoords && (
+                <Marker
+                  coordinate={destinationCoords}
+                  title="Destination"
+                  description={destinationCoords.address}
+                  pinColor={COLORS.safetyAmber}
+                />
+              )}
 
-          {/* Center Location Button - only show during navigation */}
-          {isNavigating && (
-            <TouchableOpacity
-              style={styles.centerLocationButton}
-              onPress={() => {
-                if (liveLocation && mapRef.current) {
-                  mapRef.current.animateToRegion(
+              {/* Route polyline */}
+              {selectedRoute && selectedRoute.overview_polyline && (
+                <Polyline
+                  coordinates={GoogleMapsService.decodePolyline(
+                    selectedRoute.overview_polyline.points
+                  )}
+                  strokeColor={SAFETY_LEVELS[selectedRoute.safetyLevel].color}
+                  strokeWidth={isNavigating ? 6 : 4}
+                  strokeOpacity={0.8}
+                />
+              )}
+
+              {/* Navigation progress polyline - shows completed route */}
+              {isNavigating && selectedRoute && liveLocation && (
+                <Polyline
+                  coordinates={[
+                    {
+                      latitude: location.coords.latitude,
+                      longitude: location.coords.longitude,
+                    },
                     {
                       latitude: liveLocation.coords.latitude,
                       longitude: liveLocation.coords.longitude,
-                      latitudeDelta: 0.005,
-                      longitudeDelta: 0.005,
                     },
-                    1000
-                  );
-                }
-              }}
-            >
-              <Ionicons name="locate" size={24} color={COLORS.mutedTeal} />
-            </TouchableOpacity>
-          )}
-        </View>
+                  ]}
+                  strokeColor={COLORS.safeGreen}
+                  strokeWidth={4}
+                  strokeOpacity={0.9}
+                />
+              )}
 
-        {/* Navigation Status Panel */}
-        {isNavigating && selectedRoute && (
-          <ScrollView
-            style={styles.navigationScrollContainer}
-            contentContainerStyle={styles.navigationScrollContent}
-            showsVerticalScrollIndicator={false}
-            bounces={true}
-          >
-            <View style={styles.navigationPanel}>
-              <View style={styles.navigationHeader}>
-                <View style={styles.navigationInfo}>
-                  <View style={styles.navigationText}>
-                    <Text style={styles.navigationTitle}>{destination}</Text>
-                    <Text style={styles.navigationSubtitle}>
-                      {estimatedArrival
-                        ? `ETA: ${estimatedArrival.toLocaleTimeString()}`
-                        : ""}
+              {/* Safe spots markers - hide during preview for cleaner view */}
+              {!isPreviewingRoute &&
+                safeSpots.map((spot, index) => (
+                  <Marker
+                    key={`${spot.type}-${spot.id}-${index}`}
+                    coordinate={spot.coordinate}
+                    title={spot.name || spot.title}
+                    description={`Safe spot: ${spot.type} • ${
+                      spot.distance || "Nearby"
+                    }`}
+                  >
+                    <View
+                      style={[
+                        styles.customMarker,
+                        { backgroundColor: getSpotColor(spot.type) },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getMarkerIcon(spot.type)}
+                        size={14}
+                        color={COLORS.white}
+                      />
+                    </View>
+                  </Marker>
+                ))}
+            </MapView>
+
+            {/* Route Preview Overlay */}
+            {isPreviewingRoute && (
+              <View style={styles.routePreviewOverlay}>
+                <View style={styles.previewHeader}>
+                  <Text style={styles.previewTitle}>Route Preview</Text>
+                  <TouchableOpacity
+                    style={styles.exitPreviewButton}
+                    onPress={handleExitPreview}
+                  >
+                    <Ionicons name="close" size={24} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.previewInfo}>
+                  <Text style={styles.previewRouteText}>
+                    {selectedRoute?.estimatedTime} • {selectedRoute?.distance}
+                  </Text>
+                  <Text style={styles.previewSafetyText}>
+                    Safety Score: {selectedRoute?.safetyScore || 0}/100
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* SOS Button - hide during preview */}
+            {!isPreviewingRoute && (
+              <TouchableOpacity style={styles.sosButton} onPress={handleSOS}>
+                <Ionicons name="warning" size={24} color={COLORS.white} />
+                <Text style={styles.sosText}>SOS</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* AI Companion Button - hide during preview */}
+            {!isPreviewingRoute && (
+              <TouchableOpacity
+                style={[
+                  styles.companionButton,
+                  isAICompanionActive && styles.companionButtonActive,
+                ]}
+                onPress={toggleAICompanion}
+              >
+                <Ionicons
+                  name={isAICompanionActive ? "mic" : "mic-off"}
+                  size={24}
+                  color={isAICompanionActive ? COLORS.white : COLORS.mutedTeal}
+                />
+                <Text
+                  style={[
+                    styles.companionText,
+                    isAICompanionActive && styles.companionTextActive,
+                  ]}
+                >
+                  {isAICompanionActive ? "AI On" : "AI Off"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Zoom Controls - show when route is selected and not navigating */}
+            {selectedRoute && !isNavigating && (
+              <View style={styles.zoomControls}>
+                <TouchableOpacity
+                  style={styles.zoomButton}
+                  onPress={handleZoomIn}
+                >
+                  <Ionicons name="add" size={20} color={COLORS.mutedTeal} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.zoomButton}
+                  onPress={handleZoomOut}
+                >
+                  <Ionicons name="remove" size={20} color={COLORS.mutedTeal} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Center Location Button - only show during navigation */}
+            {isNavigating && (
+              <TouchableOpacity
+                style={styles.centerLocationButton}
+                onPress={() => {
+                  if (liveLocation && mapRef.current) {
+                    mapRef.current.animateToRegion(
+                      {
+                        latitude: liveLocation.coords.latitude,
+                        longitude: liveLocation.coords.longitude,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      },
+                      1000
+                    );
+                  }
+                }}
+              >
+                <Ionicons name="locate" size={24} color={COLORS.mutedTeal} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Navigation Status Panel */}
+          {isNavigating && selectedRoute && (
+            <ScrollView
+              style={styles.navigationScrollContainer}
+              contentContainerStyle={styles.navigationScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+            >
+              <View style={styles.navigationPanel}>
+                <View style={styles.navigationHeader}>
+                  <View style={styles.navigationInfo}>
+                    <View style={styles.navigationText}>
+                      <Text style={styles.navigationTitle}>{destination}</Text>
+                      <Text style={styles.navigationSubtitle}>
+                        {estimatedArrival
+                          ? `ETA: ${estimatedArrival.toLocaleTimeString()}`
+                          : ""}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.navigationStats}>
+                    <Text style={styles.navigationDistance}>
+                      {selectedRoute.distance ||
+                        (selectedRoute.legs &&
+                          selectedRoute.legs[0] &&
+                          selectedRoute.legs[0].distance &&
+                          selectedRoute.legs[0].distance.text) ||
+                        "Unknown distance"}
+                    </Text>
+                    <Text style={styles.navigationTime}>
+                      {selectedRoute.estimatedTime ||
+                        (selectedRoute.legs &&
+                          selectedRoute.legs[0] &&
+                          selectedRoute.legs[0].duration &&
+                          selectedRoute.legs[0].duration.text) ||
+                        "Unknown time"}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.navigationStats}>
-                  <Text style={styles.navigationDistance}>
-                    {selectedRoute.distance ||
-                      (selectedRoute.legs &&
-                        selectedRoute.legs[0] &&
-                        selectedRoute.legs[0].distance &&
-                        selectedRoute.legs[0].distance.text) ||
-                      "Unknown distance"}
-                  </Text>
-                  <Text style={styles.navigationTime}>
-                    {selectedRoute.estimatedTime ||
-                      (selectedRoute.legs &&
-                        selectedRoute.legs[0] &&
-                        selectedRoute.legs[0].duration &&
-                        selectedRoute.legs[0].duration.text) ||
-                      "Unknown time"}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.safetyFeatures}>
-                <View style={styles.safetyFeature}>
-                  <Ionicons
-                    name="shield-checkmark"
-                    size={16}
-                    color={COLORS.safeGreen}
-                  />
-                  <Text style={styles.safetyFeatureText}>Live Tracking</Text>
-                </View>
-                <View style={styles.safetyFeature}>
-                  <Ionicons
-                    name="location"
-                    size={16}
-                    color={COLORS.mutedTeal}
-                  />
-                  <Text style={styles.safetyFeatureText}>
-                    Navigation Active
-                  </Text>
-                </View>
-              </View>{" "}
-              {/* Stop Navigation Button inside the panel */}
-              <TouchableOpacity
-                style={styles.stopNavigationButton}
-                onPress={handleStopNavigation}
-              >
-                <Ionicons name="stop" size={20} color={COLORS.white} />
-                <Text style={styles.stopNavigationText}>Stop Navigation</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        )}
-
-        {/* Bottom Panel - hide during preview */}
-        {routes.length > 0 && !isNavigating && !isPreviewingRoute && (
-          <ScrollView
-            style={styles.bottomScrollContainer}
-            contentContainerStyle={styles.bottomScrollContent}
-            showsVerticalScrollIndicator={false}
-            bounces={true}
-          >
-            <View style={styles.bottomPanel}>
-              {/* Route Filter Options in Bottom Panel */}
-              <View style={styles.routeFilterInPanel}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.routeFilterScroll}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.routeFilterButton,
-                      routeFilterMode === "safe" &&
-                        styles.routeFilterButtonActive,
-                    ]}
-                    onPress={() => {
-                      setRouteFilterMode("safe");
-                      if (destinationCoords) handleDestinationSearch();
-                    }}
-                  >
+                <View style={styles.safetyFeatures}>
+                  <View style={styles.safetyFeature}>
                     <Ionicons
                       name="shield-checkmark"
                       size={16}
-                      color={
-                        routeFilterMode === "safe"
-                          ? COLORS.white
-                          : COLORS.mutedTeal
-                      }
+                      color={COLORS.safeGreen}
                     />
-                    <Text
-                      style={[
-                        styles.routeFilterText,
-                        routeFilterMode === "safe" &&
-                          styles.routeFilterTextActive,
-                      ]}
-                    >
-                      Safest
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.routeFilterButton,
-                      routeFilterMode === "fastest" &&
-                        styles.routeFilterButtonActive,
-                    ]}
-                    onPress={() => {
-                      setRouteFilterMode("fastest");
-                      if (destinationCoords) handleDestinationSearch();
-                    }}
-                  >
+                    <Text style={styles.safetyFeatureText}>Live Tracking</Text>
+                  </View>
+                  <View style={styles.safetyFeature}>
                     <Ionicons
-                      name="speedometer"
+                      name="location"
                       size={16}
-                      color={
-                        routeFilterMode === "fastest"
-                          ? COLORS.white
-                          : COLORS.mutedTeal
-                      }
+                      color={COLORS.mutedTeal}
                     />
-                    <Text
-                      style={[
-                        styles.routeFilterText,
-                        routeFilterMode === "fastest" &&
-                          styles.routeFilterTextActive,
-                      ]}
-                    >
-                      Fastest
+                    <Text style={styles.safetyFeatureText}>
+                      Navigation Active
                     </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.routeFilterButton,
-                      routeFilterMode === "all" &&
-                        styles.routeFilterButtonActive,
-                    ]}
-                    onPress={() => {
-                      setRouteFilterMode("all");
-                      if (destinationCoords) handleDestinationSearch();
-                    }}
-                  >
-                    <Ionicons
-                      name="list"
-                      size={16}
-                      color={
-                        routeFilterMode === "all"
-                          ? COLORS.white
-                          : COLORS.mutedTeal
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.routeFilterText,
-                        routeFilterMode === "all" &&
-                          styles.routeFilterTextActive,
-                      ]}
-                    >
-                      All Options
-                    </Text>
-                  </TouchableOpacity>
-                </ScrollView>
+                  </View>
+                </View>{" "}
+                {/* Stop Navigation Button inside the panel */}
+                <TouchableOpacity
+                  style={styles.stopNavigationButton}
+                  onPress={handleStopNavigation}
+                >
+                  <Ionicons name="stop" size={20} color={COLORS.white} />
+                  <Text style={styles.stopNavigationText}>Stop Navigation</Text>
+                </TouchableOpacity>
               </View>
+            </ScrollView>
+          )}
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.routeOptions}
-              >
-                {routes.map((route, index) => (
-                  <TouchableOpacity
-                    key={route.id || index}
-                    style={[
-                      styles.routeOption,
-                      selectedRoute?.id === route.id &&
-                        styles.selectedRouteOption,
-                    ]}
-                    onPress={() => selectRoute(route)}
+          {/* Bottom Panel - hide during preview */}
+          {routes.length > 0 && !isNavigating && !isPreviewingRoute && (
+            <ScrollView
+              style={styles.bottomScrollContainer}
+              contentContainerStyle={styles.bottomScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+            >
+              <View style={styles.bottomPanel}>
+                {/* Route Filter Options in Bottom Panel */}
+                <View style={styles.routeFilterInPanel}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.routeFilterScroll}
                   >
-                    <View style={styles.routeHeader}>
-                      <View
-                        style={[
-                          styles.safetyIndicator,
-                          {
-                            backgroundColor:
-                              SAFETY_LEVELS[route.safetyLevel]?.color ||
-                              COLORS.slateGray,
-                          },
-                        ]}
+                    <TouchableOpacity
+                      style={[
+                        styles.routeFilterButton,
+                        routeFilterMode === "safe" &&
+                          styles.routeFilterButtonActive,
+                      ]}
+                      onPress={() => {
+                        setRouteFilterMode("safe");
+                        if (destinationCoords) handleDestinationSearch();
+                      }}
+                    >
+                      <Ionicons
+                        name="shield-checkmark"
+                        size={16}
+                        color={
+                          routeFilterMode === "safe"
+                            ? COLORS.white
+                            : COLORS.mutedTeal
+                        }
                       />
-                      <Text style={styles.safetyLabel}>
-                        {SAFETY_LEVELS[route.safetyLevel]?.label || "Unknown"}
+                      <Text
+                        style={[
+                          styles.routeFilterText,
+                          routeFilterMode === "safe" &&
+                            styles.routeFilterTextActive,
+                        ]}
+                      >
+                        Safest
                       </Text>
-                      <Text style={styles.safetyScore}>
-                        {route.safetyScore || 0}/100
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.routeFilterButton,
+                        routeFilterMode === "fastest" &&
+                          styles.routeFilterButtonActive,
+                      ]}
+                      onPress={() => {
+                        setRouteFilterMode("fastest");
+                        if (destinationCoords) handleDestinationSearch();
+                      }}
+                    >
+                      <Ionicons
+                        name="speedometer"
+                        size={16}
+                        color={
+                          routeFilterMode === "fastest"
+                            ? COLORS.white
+                            : COLORS.mutedTeal
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.routeFilterText,
+                          routeFilterMode === "fastest" &&
+                            styles.routeFilterTextActive,
+                        ]}
+                      >
+                        Fastest
                       </Text>
-                    </View>
+                    </TouchableOpacity>
 
-                    {/* Route Type */}
-                    {route.routeType && (
-                      <Text style={styles.routeTypeText}>
-                        {route.routeType}
+                    <TouchableOpacity
+                      style={[
+                        styles.routeFilterButton,
+                        routeFilterMode === "all" &&
+                          styles.routeFilterButtonActive,
+                      ]}
+                      onPress={() => {
+                        setRouteFilterMode("all");
+                        if (destinationCoords) handleDestinationSearch();
+                      }}
+                    >
+                      <Ionicons
+                        name="list"
+                        size={16}
+                        color={
+                          routeFilterMode === "all"
+                            ? COLORS.white
+                            : COLORS.mutedTeal
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.routeFilterText,
+                          routeFilterMode === "all" &&
+                            styles.routeFilterTextActive,
+                        ]}
+                      >
+                        All Options
                       </Text>
-                    )}
-
-                    <Text style={styles.routeText}>
-                      Route {index + 1}
-                      {index === 0 && (
-                        <Text style={styles.bestRouteIndicator}>
-                          {" • Best for "}
-                          {routeFilterMode === "safe"
-                            ? "Safety"
-                            : routeFilterMode === "fastest"
-                            ? "Speed"
-                            : "Balance"}
-                        </Text>
-                      )}
-                    </Text>
-                    <Text style={styles.routeDetails}>
-                      {route.estimatedTime} • {route.distance}
-                    </Text>
-
-                    {route.legs &&
-                      route.legs[0] &&
-                      route.legs[0].steps &&
-                      route.legs[0].steps.length > 0 && (
-                        <Text style={styles.routeDescription} numberOfLines={2}>
-                          Via{" "}
-                          {route.legs[0].steps[0].html_instructions.replace(
-                            /<[^>]*>/g,
-                            ""
-                          )}
-                        </Text>
-                      )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {selectedRoute && (
-                <View style={styles.navigationButtonsContainer}>
-                  <TouchableOpacity
-                    style={styles.previewRouteButton}
-                    onPress={handlePreviewRoute}
-                  >
-                    <Ionicons name="eye" size={20} color={COLORS.deepNavy} />
-                    <Text style={styles.previewRouteText}>Preview Route</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.startNavigationButton}
-                    onPress={handleStartNavigation}
-                  >
-                    <Ionicons name="navigate" size={20} color={COLORS.white} />
-                    <Text style={styles.startNavigationText}>
-                      Start Navigation
-                    </Text>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </ScrollView>
                 </View>
-              )}
-            </View>
-          </ScrollView>
-        )}
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.routeOptions}
+                >
+                  {routes.map((route, index) => (
+                    <TouchableOpacity
+                      key={route.id || index}
+                      style={[
+                        styles.routeOption,
+                        selectedRoute?.id === route.id &&
+                          styles.selectedRouteOption,
+                      ]}
+                      onPress={() => selectRoute(route)}
+                    >
+                      <View style={styles.routeHeader}>
+                        <View
+                          style={[
+                            styles.safetyIndicator,
+                            {
+                              backgroundColor:
+                                SAFETY_LEVELS[route.safetyLevel]?.color ||
+                                COLORS.slateGray,
+                            },
+                          ]}
+                        />
+                        <Text style={styles.safetyLabel}>
+                          {SAFETY_LEVELS[route.safetyLevel]?.label || "Unknown"}
+                        </Text>
+                        <Text style={styles.safetyScore}>
+                          {route.safetyScore || 0}/100
+                        </Text>
+                      </View>
+
+                      {/* Route Type */}
+                      {route.routeType && (
+                        <Text style={styles.routeTypeText}>
+                          {route.routeType}
+                        </Text>
+                      )}
+
+                      <Text style={styles.routeText}>
+                        Route {index + 1}
+                        {index === 0 && (
+                          <Text style={styles.bestRouteIndicator}>
+                            {" • Best for "}
+                            {routeFilterMode === "safe"
+                              ? "Safety"
+                              : routeFilterMode === "fastest"
+                              ? "Speed"
+                              : "Balance"}
+                          </Text>
+                        )}
+                      </Text>
+                      <Text style={styles.routeDetails}>
+                        {route.estimatedTime} • {route.distance}
+                      </Text>
+
+                      {route.legs &&
+                        route.legs[0] &&
+                        route.legs[0].steps &&
+                        route.legs[0].steps.length > 0 && (
+                          <Text
+                            style={styles.routeDescription}
+                            numberOfLines={2}
+                          >
+                            Via{" "}
+                            {route.legs[0].steps[0].html_instructions.replace(
+                              /<[^>]*>/g,
+                              ""
+                            )}
+                          </Text>
+                        )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {selectedRoute && (
+                  <View style={styles.navigationButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.previewRouteButton}
+                      onPress={handlePreviewRoute}
+                    >
+                      <Ionicons name="eye" size={20} color={COLORS.deepNavy} />
+                      <Text style={styles.previewRouteText}>Preview Route</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.startNavigationButton}
+                      onPress={handleStartNavigation}
+                    >
+                      <Ionicons
+                        name="navigate"
+                        size={20}
+                        color={COLORS.white}
+                      />
+                      <Text style={styles.startNavigationText}>
+                        Start Navigation
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+
+      {/* Immersive Route Preview Modal */}
+      <ImmersiveRoutePreview
+        visible={showImmersivePreview}
+        route={selectedRoute}
+        startLocation={
+          location
+            ? {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              }
+            : null
+        }
+        endLocation={destinationCoords}
+        safeSpots={safeSpots}
+        onClose={() => setShowImmersivePreview(false)}
+        onStartNavigation={() => {
+          setShowImmersivePreview(false);
+          handleStartNavigation();
+        }}
+      />
+    </>
   );
 }
 
