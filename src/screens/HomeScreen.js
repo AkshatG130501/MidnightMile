@@ -2425,7 +2425,7 @@ const styles = StyleSheet.create({
   },
   sosButton: {
     position: "absolute",
-    top: SPACING.xl * 3, // Moved lower from the top
+    top: SPACING.xl * 4, // Moved lower from the top
     right: SPACING.md,
     backgroundColor: COLORS.warningRed,
     width: 70,
@@ -2433,7 +2433,6 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 1000,
     ...SHADOWS.heavy,
   },
   sosText: {
@@ -2444,7 +2443,7 @@ const styles = StyleSheet.create({
   },
   companionButton: {
     position: "absolute",
-    top: SPACING.xl * 3 + 80, // Position below SOS button (70px height + 10px spacing)
+    top: SPACING.xl * 4 + 80, // Position below SOS button (70px height + 10px spacing)
     right: SPACING.md,
     backgroundColor: COLORS.warmBeige,
     borderWidth: 2,
