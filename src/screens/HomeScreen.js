@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Location from "expo-location";
-import * as Speech from "expo-speech";
+
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -70,7 +70,7 @@ export default function HomeScreen() {
   const [locationWatcher, setLocationWatcher] = useState(null);
   const [currentHeading, setCurrentHeading] = useState(0);
   const [distanceToNextStep, setDistanceToNextStep] = useState(0);
-  const [spokenInstructions, setSpokenInstructions] = useState(new Set());
+
   const [routeProgress, setRouteProgress] = useState(0);
   const blurTimeoutRef = useRef(null);
   const isTouchingRef = useRef(false);
@@ -520,7 +520,6 @@ export default function HomeScreen() {
     setCurrentStepIndex(0);
     setDistanceToNextStep(0);
     setRouteProgress(0);
-    setSpokenInstructions(new Set());
 
     console.log("✅ Live navigation tracking stopped");
   };
@@ -564,13 +563,8 @@ export default function HomeScreen() {
       console.log(`📍 Advancing to step ${currentStepIndex + 1}`);
       setCurrentStepIndex(currentStepIndex + 1);
 
-      // Speak next instruction if AI companion is active
-      if (isAICompanionActive) {
-        const nextStep = steps[currentStepIndex + 1];
-        if (nextStep) {
-          speakInstruction(nextStep.html_instructions);
-        }
-      }
+      // Move to next step
+      console.log(`📍 Moving to next navigation step`);
     }
 
     // Calculate overall route progress
@@ -578,29 +572,12 @@ export default function HomeScreen() {
     const progress = ((currentStepIndex + 1) / totalSteps) * 100;
     setRouteProgress(progress);
 
-    // Speak current instruction if not already spoken and AI is active
-    if (isAICompanionActive && !spokenInstructions.has(currentStepIndex)) {
-      speakInstruction(currentStep.html_instructions);
-      setSpokenInstructions((prev) => new Set([...prev, currentStepIndex]));
-    }
+    // Navigation progress updated
   };
 
   const speakInstruction = (htmlInstruction) => {
-    if (!htmlInstruction) return;
-
-    // Remove HTML tags and clean up instruction
-    const cleanInstruction = htmlInstruction
-      .replace(/<[^>]*>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .trim();
-
-    console.log("🗣️ Speaking instruction:", cleanInstruction);
-
-    Speech.speak(cleanInstruction, {
-      language: "en-US",
-      pitch: 1.0,
-      rate: 0.8,
-    });
+    // Voice commands removed
+    return;
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -618,20 +595,26 @@ export default function HomeScreen() {
     return R * c; // Distance in meters
   };
 
+  // Calculate bearing between two points
+  const calculateBearing = (lat1, lon1, lat2, lon2) => {
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const λ1 = (lon1 * Math.PI) / 180;
+    const λ2 = (lon2 * Math.PI) / 180;
+
+    const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+    const x =
+      Math.cos(φ1) * Math.sin(φ2) -
+      Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+    const θ = Math.atan2(y, x);
+
+    return ((θ * 180) / Math.PI + 360) % 360; // Convert to degrees and normalize
+  };
+
   const handleNavigationCompleted = () => {
     console.log("🎯 Navigation completed!");
 
-    // Speak completion message
-    if (isAICompanionActive) {
-      Speech.speak(
-        "You have arrived at your destination. Navigation completed.",
-        {
-          language: "en-US",
-          pitch: 1.0,
-          rate: 0.8,
-        }
-      );
-    }
+    // Navigation completed - voice commands removed
 
     Alert.alert(
       "Navigation Completed",
@@ -736,28 +719,53 @@ export default function HomeScreen() {
 
       let fetchedRoutes = [];
 
-      // Get routes based on the selected filter mode
-      if (routeFilterMode === "all") {
-        // Get ALL possible routes with different modes and alternatives
-        fetchedRoutes = await GoogleMapsService.getAllPossibleRoutes(
-          location.coords,
-          destinationLocation
-        );
+      // Get all possible routes first, then filter/sort based on selected mode
+      const allRoutes = await GoogleMapsService.getAllPossibleRoutes(
+        location.coords,
+        destinationLocation
+      );
+
+      // Apply filtering and sorting based on the selected filter mode
+      console.log(`🔄 Applying filter mode: ${routeFilterMode} to ${allRoutes.length} routes`);
+      
+      if (routeFilterMode === "safe") {
+        // Safest routes: Sort by safety score (highest first), then by duration
+        fetchedRoutes = allRoutes.sort((a, b) => {
+          if (a.safetyScore !== b.safetyScore) {
+            return b.safetyScore - a.safetyScore; // Higher safety score first
+          }
+          return a.legs[0].duration.value - b.legs[0].duration.value; // Then by duration
+        });
+        console.log(`✅ Safe routes sorted by safety score. Top route safety: ${fetchedRoutes[0]?.safetyScore}/100`);
       } else if (routeFilterMode === "fastest") {
-        // Get routes sorted by fastest time across all modes
-        const allRoutes = await GoogleMapsService.getAllPossibleRoutes(
-          location.coords,
-          destinationLocation
-        );
+        // Fastest routes: Sort by duration only, regardless of safety
         fetchedRoutes = allRoutes.sort(
           (a, b) => a.legs[0].duration.value - b.legs[0].duration.value
         );
-      } else {
-        // Default: Get safe routes (walking only with safety prioritization)
-        fetchedRoutes = await GoogleMapsService.getSafeRoutes(
-          location.coords,
-          destinationLocation
-        );
+        console.log(`✅ Fastest routes sorted by duration. Top route time: ${fetchedRoutes[0]?.estimatedTime}`);
+      } else if (routeFilterMode === "all") {
+        // All routes: Show all routes with balanced sorting (safety + efficiency)
+        fetchedRoutes = allRoutes.sort((a, b) => {
+          // Balanced scoring: 60% safety, 40% time efficiency
+          const safetyWeight = 0.6;
+          const timeWeight = 0.4;
+          
+          // Normalize safety score (0-100) and time efficiency (inverse of duration)
+          const aSafetyNorm = a.safetyScore / 100;
+          const bSafetyNorm = b.safetyScore / 100;
+          
+          // For time efficiency, shorter duration = higher score
+          const maxDuration = Math.max(a.legs[0].duration.value, b.legs[0].duration.value);
+          const aTimeNorm = (maxDuration - a.legs[0].duration.value) / maxDuration;
+          const bTimeNorm = (maxDuration - b.legs[0].duration.value) / maxDuration;
+          
+          // Calculate composite scores
+          const aComposite = (aSafetyNorm * safetyWeight) + (aTimeNorm * timeWeight);
+          const bComposite = (bSafetyNorm * safetyWeight) + (bTimeNorm * timeWeight);
+          
+          return bComposite - aComposite; // Higher composite score first
+        });
+        console.log(`✅ All routes sorted by balanced score. Top route: safety ${fetchedRoutes[0]?.safetyScore}/100, time ${fetchedRoutes[0]?.estimatedTime}`);
       }
 
       setRoutes(fetchedRoutes);
@@ -1172,7 +1180,6 @@ export default function HomeScreen() {
     setCurrentStepIndex(0);
     setNavigationStartTime(new Date());
     setRouteProgress(0);
-    setSpokenInstructions(new Set());
 
     // Calculate estimated arrival time with proper null checks
     let arrivalTime = null;
@@ -1196,40 +1203,47 @@ export default function HomeScreen() {
       // Continue without arrival time if calculation fails
     }
 
-    // Show confirmation and safety reminders
-    const arrivalText = arrivalTime
-      ? `\n\nEstimated arrival: ${arrivalTime.toLocaleTimeString()}`
-      : "";
+    console.log("🚀 Live navigation started successfully");
 
-    Alert.alert(
-      "Navigation Started",
-      `🚀 Live navigation activated!\n\n🛡️ Safety Features:\n• Real-time GPS tracking\n• Turn-by-turn voice guidance\n• AI companion monitoring\n• Emergency SOS available\n• Safe spots highlighted${arrivalText}`,
-      [
-        {
-          text: "Start Journey",
-          style: "default",
-          onPress: () => {
-            console.log("🚀 Live navigation started successfully");
-            // Enable AI companion for safety and voice instructions
-            if (!isAICompanionActive) {
-              setIsAICompanionActive(true);
-            }
+    // Enable AI companion for safety if not already active
+    if (!isAICompanionActive) {
+      setIsAICompanionActive(true);
+    }
 
-            // Speak initial instruction
-            if (
-              selectedRoute.legs &&
-              selectedRoute.legs[0] &&
-              selectedRoute.legs[0].steps.length > 0
-            ) {
-              const firstStep = selectedRoute.legs[0].steps[0];
-              speakInstruction(
-                `Starting navigation. ${firstStep.html_instructions}`
-              );
-            }
+    // Start navigation directly and set up 3D navigation view
+    if (
+      selectedRoute.legs &&
+      selectedRoute.legs[0] &&
+      selectedRoute.legs[0].steps.length > 0
+    ) {
+      console.log("Starting navigation in 3D mode...");
+
+      // Calculate initial bearing towards the first step
+      if (mapRef.current && location) {
+        const firstStep = selectedRoute.legs[0].steps[0];
+        const bearing = calculateBearing(
+          location.coords.latitude,
+          location.coords.longitude,
+          firstStep.start_location.lat,
+          firstStep.start_location.lng
+        );
+
+        // Animate to 3D view with camera facing route direction
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            },
+            pitch: 45, // Tilt camera for 3D view
+            heading: bearing, // Orient camera towards route direction
+            zoom: 18, // Closer zoom level for navigation
+            altitude: 500, // Optional: control viewing height
           },
-        },
-      ]
-    );
+          { duration: 1000 }
+        ); // Smooth animation over 1 second
+      }
+    }
   };
 
   const handleStopNavigation = () => {
@@ -1251,7 +1265,6 @@ export default function HomeScreen() {
             setEstimatedArrival(null);
             setRouteProgress(0);
             setDistanceToNextStep(0);
-            setSpokenInstructions(new Set());
 
             // Stop location tracking
             if (locationWatcher) {
@@ -1259,8 +1272,7 @@ export default function HomeScreen() {
               setLocationWatcher(null);
             }
 
-            // Stop any ongoing speech
-            Speech.stop();
+            // Navigation stopped
 
             console.log("🛑 Live navigation stopped");
           },
@@ -1685,101 +1697,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Route Filter Options */}
-        {destinationCoords && (
-          <View style={styles.routeFilterContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.routeFilterScroll}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.routeFilterButton,
-                  routeFilterMode === "safe" && styles.routeFilterButtonActive,
-                ]}
-                onPress={() => {
-                  setRouteFilterMode("safe");
-                  if (destinationCoords) handleDestinationSearch();
-                }}
-              >
-                <Ionicons
-                  name="shield-checkmark"
-                  size={16}
-                  color={
-                    routeFilterMode === "safe" ? COLORS.white : COLORS.mutedTeal
-                  }
-                />
-                <Text
-                  style={[
-                    styles.routeFilterText,
-                    routeFilterMode === "safe" && styles.routeFilterTextActive,
-                  ]}
-                >
-                  Safest
-                </Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.routeFilterButton,
-                  routeFilterMode === "fastest" &&
-                    styles.routeFilterButtonActive,
-                ]}
-                onPress={() => {
-                  setRouteFilterMode("fastest");
-                  if (destinationCoords) handleDestinationSearch();
-                }}
-              >
-                <Ionicons
-                  name="speedometer"
-                  size={16}
-                  color={
-                    routeFilterMode === "fastest"
-                      ? COLORS.white
-                      : COLORS.mutedTeal
-                  }
-                />
-                <Text
-                  style={[
-                    styles.routeFilterText,
-                    routeFilterMode === "fastest" &&
-                      styles.routeFilterTextActive,
-                  ]}
-                >
-                  Fastest
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.routeFilterButton,
-                  routeFilterMode === "all" && styles.routeFilterButtonActive,
-                ]}
-                onPress={() => {
-                  setRouteFilterMode("all");
-                  if (destinationCoords) handleDestinationSearch();
-                }}
-              >
-                <Ionicons
-                  name="list"
-                  size={16}
-                  color={
-                    routeFilterMode === "all" ? COLORS.white : COLORS.mutedTeal
-                  }
-                />
-                <Text
-                  style={[
-                    styles.routeFilterText,
-                    routeFilterMode === "all" && styles.routeFilterTextActive,
-                  ]}
-                >
-                  All Options
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        )}
 
         {/* Map */}
         <View style={styles.mapContainer}>
@@ -1801,7 +1719,26 @@ export default function HomeScreen() {
             rotateEnabled={true}
             scrollEnabled={true} // Always allow map interaction
             zoomEnabled={true}
-            followsUserLocation={false} // Don't auto-follow to allow manual exploration
+            followsUserLocation={isNavigating} // Auto-follow during navigation
+            heading={isNavigating ? currentHeading : 0} // Keep forward direction up during navigation
+            camera={
+              isNavigating
+                ? {
+                    center: {
+                      latitude:
+                        liveLocation?.coords.latitude ||
+                        location.coords.latitude,
+                      longitude:
+                        liveLocation?.coords.longitude ||
+                        location.coords.longitude,
+                    },
+                    pitch: 45,
+                    heading: currentHeading,
+                    altitude: 500,
+                    zoom: 18,
+                  }
+                : undefined
+            }
           >
             {/* Current location marker - custom during navigation */}
             {(location || liveLocation) && (
@@ -1962,28 +1899,11 @@ export default function HomeScreen() {
             <View style={styles.navigationPanel}>
               <View style={styles.navigationHeader}>
                 <View style={styles.navigationInfo}>
-                  <Ionicons
-                    name={
-                      getCurrentStep()
-                        ? getManeuverIcon(getCurrentStep().maneuver)
-                        : "navigate-circle"
-                    }
-                    size={24}
-                    color={COLORS.mutedTeal}
-                  />
                   <View style={styles.navigationText}>
-                    <Text style={styles.navigationTitle}>
-                      {Math.round(routeProgress)}% to {destination}
-                    </Text>
+                    <Text style={styles.navigationTitle}>{destination}</Text>
                     <Text style={styles.navigationSubtitle}>
                       {estimatedArrival &&
                         `ETA: ${estimatedArrival.toLocaleTimeString()}`}
-                      {distanceToNextStep > 0 &&
-                        ` • ${
-                          distanceToNextStep < 1000
-                            ? `${Math.round(distanceToNextStep)}m`
-                            : `${(distanceToNextStep / 1000).toFixed(1)}km`
-                        } to next turn`}
                     </Text>
                   </View>
                 </View>
@@ -2006,28 +1926,6 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
-
-              {/* Progress bar */}
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${routeProgress}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.progressText}>
-                  {Math.round(routeProgress)}%
-                </Text>
-              </View>
-
-              <View style={styles.instructionContainer}>
-                <Text style={styles.instructionText}>
-                  {getInstructionWithDistance()}
-                </Text>
-              </View>
-
               <View style={styles.safetyFeatures}>
                 <View style={styles.safetyFeature}>
                   <Ionicons
@@ -2037,12 +1935,6 @@ export default function HomeScreen() {
                   />
                   <Text style={styles.safetyFeatureText}>Live Tracking</Text>
                 </View>
-                {isAICompanionActive && (
-                  <View style={styles.safetyFeature}>
-                    <Ionicons name="mic" size={16} color={COLORS.mutedTeal} />
-                    <Text style={styles.safetyFeatureText}>Voice Guidance</Text>
-                  </View>
-                )}
                 <View style={styles.safetyFeature}>
                   <Ionicons
                     name="location"
@@ -2050,12 +1942,10 @@ export default function HomeScreen() {
                     color={COLORS.mutedTeal}
                   />
                   <Text style={styles.safetyFeatureText}>
-                    Step {currentStepIndex + 1} of{" "}
-                    {selectedRoute.legs?.[0]?.steps?.length || 0}
+                    Navigation Active
                   </Text>
                 </View>
-              </View>
-
+              </View>{" "}
               {/* Stop Navigation Button inside the panel */}
               <TouchableOpacity
                 style={styles.stopNavigationButton}
@@ -2080,14 +1970,108 @@ export default function HomeScreen() {
               <View style={styles.panelHeader}>
                 <Text style={styles.routeTitle}>
                   {routeFilterMode === "all"
-                    ? `All Walking Routes to ${destination} (${routes.length})`
+                    ? `All Walking Routes to ${destination} (${routes.length}) - Balanced`
                     : routeFilterMode === "fastest"
-                    ? `Fastest Walking Routes to ${destination} (${routes.length})`
-                    : `Safe Walking Routes to ${destination} (${routes.length})`}
+                    ? `Fastest Walking Routes to ${destination} (${routes.length}) - Speed Priority`
+                    : `Safest Walking Routes to ${destination} (${routes.length}) - Safety Priority`}
                 </Text>
                 {isLoadingRoutes && (
                   <ActivityIndicator size="small" color={COLORS.mutedTeal} />
                 )}
+              </View>
+
+              {/* Route Filter Options in Bottom Panel */}
+              <View style={styles.routeFilterInPanel}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.routeFilterScroll}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.routeFilterButton,
+                      routeFilterMode === "safe" && styles.routeFilterButtonActive,
+                    ]}
+                    onPress={() => {
+                      setRouteFilterMode("safe");
+                      if (destinationCoords) handleDestinationSearch();
+                    }}
+                  >
+                    <Ionicons
+                      name="shield-checkmark"
+                      size={16}
+                      color={
+                        routeFilterMode === "safe" ? COLORS.white : COLORS.mutedTeal
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.routeFilterText,
+                        routeFilterMode === "safe" && styles.routeFilterTextActive,
+                      ]}
+                    >
+                      Safest
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.routeFilterButton,
+                      routeFilterMode === "fastest" &&
+                        styles.routeFilterButtonActive,
+                    ]}
+                    onPress={() => {
+                      setRouteFilterMode("fastest");
+                      if (destinationCoords) handleDestinationSearch();
+                    }}
+                  >
+                    <Ionicons
+                      name="speedometer"
+                      size={16}
+                      color={
+                        routeFilterMode === "fastest"
+                          ? COLORS.white
+                          : COLORS.mutedTeal
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.routeFilterText,
+                        routeFilterMode === "fastest" &&
+                          styles.routeFilterTextActive,
+                      ]}
+                    >
+                      Fastest
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.routeFilterButton,
+                      routeFilterMode === "all" && styles.routeFilterButtonActive,
+                    ]}
+                    onPress={() => {
+                      setRouteFilterMode("all");
+                      if (destinationCoords) handleDestinationSearch();
+                    }}
+                  >
+                    <Ionicons
+                      name="list"
+                      size={16}
+                      color={
+                        routeFilterMode === "all" ? COLORS.white : COLORS.mutedTeal
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.routeFilterText,
+                        routeFilterMode === "all" && styles.routeFilterTextActive,
+                      ]}
+                    >
+                      All Options
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
 
               <ScrollView
@@ -2131,7 +2115,12 @@ export default function HomeScreen() {
                       </Text>
                     )}
 
-                    <Text style={styles.routeText}>Route {index + 1}</Text>
+                    <Text style={styles.routeText}>
+                      Route {index + 1}
+                      {index === 0 && (
+                        <Text style={styles.bestRouteIndicator}> • Best for {routeFilterMode === "safe" ? "Safety" : routeFilterMode === "fastest" ? "Speed" : "Balance"}</Text>
+                      )}
+                    </Text>
                     <Text style={styles.routeDetails}>
                       {route.estimatedTime} • {route.distance}
                     </Text>
@@ -2283,18 +2272,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   // Route Filter Styles
-  routeFilterContainer: {
-    position: "absolute",
-    top: 121, // Adjusted to be below search container (48 + 16 + ~46 for search bar)
-    left: 0,
-    right: 0,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    backgroundColor: COLORS.white,
-    zIndex: 999,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.warmBeige,
-    ...SHADOWS.light,
+  routeFilterInPanel: {
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   routeFilterScroll: {
     flexGrow: 0,
@@ -2358,7 +2338,7 @@ const styles = StyleSheet.create({
   },
   sosButton: {
     position: "absolute",
-    bottom: SPACING.md,
+    top: SPACING.xl * 3, // Moved lower from the top
     right: SPACING.md,
     backgroundColor: COLORS.warningRed,
     width: 70,
@@ -2377,13 +2357,13 @@ const styles = StyleSheet.create({
   },
   companionButton: {
     position: "absolute",
-    bottom: SPACING.xl + 60, // Position above the default location button (60px for button + spacing)
+    top: SPACING.xl * 3 + 80, // Position below SOS button (70px height + 10px spacing)
     right: SPACING.md,
     backgroundColor: COLORS.warmBeige,
     borderWidth: 2,
     borderColor: COLORS.mutedTeal,
-    width: 80,
-    height: 80,
+    width: 70,
+    height: 70,
     borderRadius: BORDER_RADIUS.full,
     justifyContent: "center",
     alignItems: "center",
@@ -2404,7 +2384,7 @@ const styles = StyleSheet.create({
   },
   centerLocationButton: {
     position: "absolute",
-    bottom: SPACING.xl + 60 + 90, // Position above AI companion button
+    bottom: "30%", // Positioned in the middle-lower section of the screen
     right: SPACING.md,
     backgroundColor: COLORS.white,
     borderWidth: 2,
@@ -2500,6 +2480,12 @@ const styles = StyleSheet.create({
     fontWeight: FONTS.weights.medium,
     color: COLORS.deepNavy,
     marginBottom: 2,
+  },
+  bestRouteIndicator: {
+    fontSize: FONTS.sizes.small,
+    fontWeight: FONTS.weights.medium,
+    color: COLORS.mutedTeal,
+    fontStyle: "italic",
   },
   routeDetails: {
     fontSize: FONTS.sizes.small,
