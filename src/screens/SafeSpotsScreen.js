@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,12 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  ActivityIndicator,
+  RefreshControl,
+  Platform,
+  ScrollView,
 } from "react-native";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import {
   COLORS,
@@ -17,67 +22,174 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from "../constants/theme";
+import { GoogleMapsService } from "../services/GoogleMapsService";
 
 export default function SafeSpotsScreen() {
-  const [safeSpots] = useState([
-    {
-      id: 1,
-      name: "Central Police Station",
-      type: "police",
-      address: "123 Main Street, Downtown",
-      distance: "0.3 miles",
-      isOpen24Hours: true,
-      phone: "+1 (555) 911-0000",
-      rating: 4.8,
-      coordinates: { latitude: 37.78925, longitude: -122.4314 },
-    },
-    {
-      id: 2,
-      name: "City General Hospital",
-      type: "hospital",
-      address: "456 Health Ave, Medical District",
-      distance: "0.7 miles",
-      isOpen24Hours: true,
-      phone: "+1 (555) 123-4567",
-      rating: 4.6,
-      coordinates: { latitude: 37.79025, longitude: -122.4304 },
-    },
-    {
-      id: 3,
-      name: "24/7 Pharmacy Plus",
-      type: "pharmacy",
-      address: "789 Commerce St, Shopping Center",
-      distance: "0.5 miles",
-      isOpen24Hours: true,
-      phone: "+1 (555) 987-6543",
-      rating: 4.4,
-      coordinates: { latitude: 37.78625, longitude: -122.4344 },
-    },
-    {
-      id: 4,
-      name: "QuickMart 24/7",
-      type: "store",
-      address: "321 Night Owl Blvd, Commercial Area",
-      distance: "0.2 miles",
-      isOpen24Hours: true,
-      phone: "+1 (555) 456-7890",
-      rating: 4.2,
-      coordinates: { latitude: 37.78825, longitude: -122.4334 },
-    },
-    {
-      id: 5,
-      name: "Fire Station 12",
-      type: "fire",
-      address: "654 Rescue Road, Emergency District",
-      distance: "0.9 miles",
-      isOpen24Hours: true,
-      phone: "+1 (555) 911-1212",
-      rating: 4.9,
-      coordinates: { latitude: 37.79125, longitude: -122.4294 },
-    },
-  ]);
-
+  const [safeSpots, setSafeSpots] = useState([]);
+  const [location, setLocation] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Generate unique ID for spots without place_id
+  const generateUniqueId = (prefix) =>
+    `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  // Get user's current location
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
+
+  // Load safe spots when location is available
+  useEffect(() => {
+    if (location) {
+      loadNearbyPlaces();
+    }
+  }, [location, selectedCategory]);
+
+  const getCurrentLocation = async () => {
+    try {
+      console.log("📍 Requesting location permissions for SafeSpotsScreen...");
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setError(
+          "Location permission denied. Please enable location access to find nearby safe spots."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      console.log("📍 Getting current location...");
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        maximumAge: 15000,
+        timeout: 10000,
+      });
+
+      setLocation(currentLocation.coords);
+      console.log("✅ Location obtained for SafeSpotsScreen");
+    } catch (error) {
+      console.error("❌ Error getting location:", error);
+      setError(
+        "Unable to get your location. Please check your location settings."
+      );
+      setIsLoading(false);
+    }
+  };
+
+  const loadNearbyPlaces = async () => {
+    if (!location) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log("📍 Loading nearby safe spots...");
+
+      // Load different types of safe spots based on category
+      let placesToLoad = [];
+
+      if (selectedCategory === "all") {
+        placesToLoad = [
+          { type: "police", label: "police" },
+          { type: "hospital", label: "hospital" },
+          { type: "pharmacy", label: "pharmacy" },
+          { type: "gas_station", label: "store" },
+          { type: "fire_station", label: "fire" },
+        ];
+      } else {
+        // Map UI category to Google Places API type
+        const typeMapping = {
+          police: "police",
+          hospital: "hospital",
+          pharmacy: "pharmacy",
+          store: "gas_station", // Using gas stations as 24/7 stores
+          fire: "fire_station",
+        };
+
+        if (typeMapping[selectedCategory]) {
+          placesToLoad = [
+            { type: typeMapping[selectedCategory], label: selectedCategory },
+          ];
+        }
+      }
+
+      // Load places for each type
+      const promises = placesToLoad.map(async ({ type, label }) => {
+        try {
+          console.log(`🔍 Loading ${type} places...`);
+          console.log(`📍 User location:`, location);
+          const places = await GoogleMapsService.getNearbyPlaces(
+            location,
+            type,
+            5000
+          );
+          console.log(`✅ Found ${places.length} ${type} places`);
+
+          return places.map((place) => {
+            console.log(`📏 Place ${place.name} distance: ${place.distance}`);
+            return {
+              ...place,
+              type: label,
+              // Add missing fields with defaults
+              address: place.vicinity,
+              isOpen24Hours:
+                type === "hospital" ||
+                type === "police" ||
+                type === "fire_station",
+              phone: "Call for info", // We'll enhance this with Place Details API later
+              // distance is already formatted by GoogleMapsService.calculateDistance
+            };
+          });
+        } catch (error) {
+          console.error(`❌ Error loading ${type}:`, error);
+          return [];
+        }
+      });
+
+      const results = await Promise.all(promises);
+      const allPlaces = results.flat();
+
+      // Remove duplicates and sort by distance
+      const uniquePlaces = allPlaces
+        .filter(
+          (place, index, self) =>
+            index === self.findIndex((p) => p.id === place.id)
+        )
+        .sort((a, b) => {
+          // Parse distance strings for sorting (e.g., "500m" or "1.2km")
+          const getDistanceInMeters = (distStr) => {
+            if (!distStr) return 0;
+            const num = parseFloat(distStr);
+            return distStr.includes("km") ? num * 1000 : num;
+          };
+
+          const distA = getDistanceInMeters(a.distance);
+          const distB = getDistanceInMeters(b.distance);
+          return distA - distB;
+        });
+
+      setSafeSpots(uniquePlaces);
+      console.log(`✅ Loaded ${uniquePlaces.length} safe spots`);
+    } catch (error) {
+      console.error("❌ Error loading safe spots:", error);
+      setError("Failed to load safe spots. Please try again.");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    if (location) {
+      loadNearbyPlaces();
+    } else {
+      getCurrentLocation();
+    }
+  };
 
   const categories = [
     { id: "all", name: "All", icon: "grid-outline" },
@@ -123,24 +235,45 @@ export default function SafeSpotsScreen() {
   };
 
   const handleCall = (phone) => {
-    Linking.openURL(`tel:${phone}`);
+    if (phone && phone !== "Call for info") {
+      Linking.openURL(`tel:${phone}`);
+    } else {
+      Alert.alert(
+        "Phone Number",
+        "Phone number not available. You may need to search online or call directory assistance.",
+        [{ text: "OK" }]
+      );
+    }
   };
 
   const handleDirections = (spot) => {
-    const { latitude, longitude } = spot.coordinates;
-    const url = `maps:0,0?q=${latitude},${longitude}`;
+    const { latitude, longitude } = spot.coordinate;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+
     Linking.openURL(url).catch(() => {
-      Alert.alert("Error", "Unable to open maps application");
+      // Fallback to platform-specific maps
+      const fallbackUrl =
+        Platform.OS === "ios"
+          ? `maps:0,0?q=${latitude},${longitude}`
+          : `geo:0,0?q=${latitude},${longitude}`;
+
+      Linking.openURL(fallbackUrl).catch(() => {
+        Alert.alert("Error", "Unable to open maps application");
+      });
     });
   };
 
   const handleSpotPress = (spot) => {
     Alert.alert(
-      spot.name,
-      `${spot.address}\n\nDistance: ${spot.distance}\nPhone: ${spot.phone}`,
+      String(spot?.name || "Safe Spot"),
+      `${String(
+        spot?.address || "Address not available"
+      )}\n\nDistance: ${String(spot?.distance || "Unknown")}\nPhone: ${String(
+        spot?.phone || "Not available"
+      )}`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Call", onPress: () => handleCall(spot.phone) },
+        { text: "Call", onPress: () => handleCall(spot?.phone) },
         { text: "Directions", onPress: () => handleDirections(spot) },
       ]
     );
@@ -170,68 +303,128 @@ export default function SafeSpotsScreen() {
           selectedCategory === item.id && styles.categoryTextActive,
         ]}
       >
-        {item.name}
+        {String(item.name || "")}
       </Text>
     </TouchableOpacity>
   );
 
-  const renderSpotItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.spotItem}
-      onPress={() => handleSpotPress(item)}
-    >
-      <View
-        style={[styles.spotIcon, { backgroundColor: getSpotColor(item.type) }]}
+  const renderSpotItem = ({ item }) => {
+    // Safety check to ensure item exists and has required properties
+    if (!item || !item.name) {
+      return null;
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.spotItem}
+        onPress={() => handleSpotPress(item)}
       >
-        <Ionicons
-          name={getSpotIcon(item.type)}
-          size={24}
-          color={COLORS.white}
-        />
-      </View>
+        <View
+          style={[
+            styles.spotIcon,
+            { backgroundColor: getSpotColor(item.type) },
+          ]}
+        >
+          <Ionicons
+            name={getSpotIcon(item.type)}
+            size={24}
+            color={COLORS.white}
+          />
+        </View>
 
-      <View style={styles.spotInfo}>
-        <View style={styles.spotHeader}>
-          <Text style={styles.spotName}>{item.name}</Text>
-          {item.isOpen24Hours && (
-            <View style={styles.openBadge}>
-              <Text style={styles.openText}>24/7</Text>
+        <View style={styles.spotInfo}>
+          <View style={styles.spotHeader}>
+            <Text style={styles.spotName} numberOfLines={1}>
+              {String(item.name || "Unknown Location")}
+            </Text>
+            {item.isOpen24Hours ? (
+              <View style={styles.openBadge}>
+                <Text style={styles.openText}>24/7</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={styles.spotAddress} numberOfLines={2}>
+            {String(item.address || "Address not available")}
+          </Text>
+
+          <View style={styles.spotDetails}>
+            <View style={styles.distanceContainer}>
+              <Ionicons name="location" size={14} color={COLORS.slateGray} />
+              <Text style={styles.distanceText}>
+                {String(item.distance || "Unknown distance")}
+              </Text>
             </View>
-          )}
-        </View>
 
-        <Text style={styles.spotAddress}>{item.address}</Text>
-
-        <View style={styles.spotDetails}>
-          <View style={styles.distanceContainer}>
-            <Ionicons name="location" size={14} color={COLORS.slateGray} />
-            <Text style={styles.distanceText}>{item.distance}</Text>
-          </View>
-
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={14} color={COLORS.safetyAmber} />
-            <Text style={styles.ratingText}>{item.rating}</Text>
+            {item.rating && item.rating > 0 ? (
+              <View style={styles.ratingContainer}>
+                <Ionicons name="star" size={14} color={COLORS.safetyAmber} />
+                <Text style={styles.ratingText}>
+                  {String(Number(item.rating || 0).toFixed(1))}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
-      </View>
 
-      <View style={styles.spotActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleCall(item.phone)}
-        >
-          <Ionicons name="call" size={18} color={COLORS.mutedTeal} />
-        </TouchableOpacity>
+        <View style={styles.spotActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleCall(item.phone)}
+          >
+            <Ionicons name="call" size={18} color={COLORS.mutedTeal} />
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleDirections(item)}
-        >
-          <Ionicons name="navigate" size={18} color={COLORS.mutedTeal} />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => handleDirections(item)}
+          >
+            <Ionicons name="navigate" size={18} color={COLORS.mutedTeal} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // Loading state
+  if (isLoading && !isRefreshing) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Safe Spots Nearby</Text>
+          <View style={styles.headerSubtitle}>
+            <Ionicons name="location" size={16} color={COLORS.slateGray} />
+            <Text style={styles.locationText}>Getting your location...</Text>
+          </View>
+        </View>
+
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.mutedTeal} />
+          <Text style={styles.loadingText}>Finding safe spots near you...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Safe Spots Nearby</Text>
+        </View>
+
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={COLORS.warningRed} />
+          <Text style={styles.errorTitle}>Unable to Load Safe Spots</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -240,7 +433,9 @@ export default function SafeSpotsScreen() {
         <Text style={styles.headerTitle}>Safe Spots Nearby</Text>
         <View style={styles.headerSubtitle}>
           <Ionicons name="location" size={16} color={COLORS.slateGray} />
-          <Text style={styles.locationText}>Current Location</Text>
+          <Text style={styles.locationText}>
+            {location ? "Current Location" : "Getting location..."}
+          </Text>
         </View>
       </View>
 
@@ -249,7 +444,7 @@ export default function SafeSpotsScreen() {
         <FlatList
           data={categories}
           renderItem={renderCategoryItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => String(item?.id || Math.random())}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesList}
@@ -264,22 +459,61 @@ export default function SafeSpotsScreen() {
             size={20}
             color={COLORS.mutedTeal}
           />
-          <Text style={styles.infoTitle}>Safety Information</Text>
+          <Text style={styles.infoTitle}>Live Safety Information</Text>
         </View>
         <Text style={styles.infoText}>
-          These are verified safe locations open 24/7. Tap any location to call
-          or get directions.
+          {safeSpots.length > 0
+            ? `Found ${safeSpots.length} verified safe locations nearby. Pull down to refresh.`
+            : "Loading verified safe locations from Google Places..."}
         </Text>
       </View>
 
       {/* Safe Spots List */}
-      <FlatList
-        data={filteredSpots}
-        renderItem={renderSpotItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.spotsList}
-        showsVerticalScrollIndicator={false}
-      />
+      {safeSpots.length > 0 ? (
+        <FlatList
+          data={filteredSpots}
+          renderItem={renderSpotItem}
+          keyExtractor={(item) => String(item?.id || Math.random())}
+          contentContainerStyle={styles.spotsList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.mutedTeal]}
+              tintColor={COLORS.mutedTeal}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="location-outline"
+                size={48}
+                color={COLORS.slateGray}
+              />
+              <Text style={styles.emptyTitle}>No safe spots found</Text>
+              <Text style={styles.emptyMessage}>
+                Try selecting a different category or pull down to refresh.
+              </Text>
+            </View>
+          }
+        />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.mutedTeal]}
+              tintColor={COLORS.mutedTeal}
+            />
+          }
+        >
+          <ActivityIndicator size="large" color={COLORS.mutedTeal} />
+          <Text style={styles.loadingText}>Finding safe spots near you...</Text>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -438,11 +672,79 @@ const styles = StyleSheet.create({
   },
   spotActions: {
     alignItems: "center",
-    gap: SPACING.sm,
+    justifyContent: "space-between",
+    height: 90, // Set a fixed height to accommodate both buttons
   },
   actionButton: {
     backgroundColor: COLORS.warmBeige,
     padding: SPACING.sm,
     borderRadius: BORDER_RADIUS.full,
+    marginBottom: SPACING.xs, // Add margin between buttons
+  },
+  // Loading and Error States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+  },
+  loadingText: {
+    fontSize: FONTS.sizes.medium,
+    color: COLORS.slateGray,
+    marginTop: SPACING.md,
+    textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+  },
+  errorTitle: {
+    fontSize: FONTS.sizes.large,
+    fontWeight: FONTS.weights.semibold,
+    color: COLORS.deepNavy,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    textAlign: "center",
+  },
+  errorMessage: {
+    fontSize: FONTS.sizes.medium,
+    color: COLORS.slateGray,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: SPACING.lg,
+  },
+  retryButton: {
+    backgroundColor: COLORS.mutedTeal,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  retryText: {
+    fontSize: FONTS.sizes.medium,
+    fontWeight: FONTS.weights.semibold,
+    color: COLORS.white,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xl,
+  },
+  emptyTitle: {
+    fontSize: FONTS.sizes.large,
+    fontWeight: FONTS.weights.semibold,
+    color: COLORS.deepNavy,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    textAlign: "center",
+  },
+  emptyMessage: {
+    fontSize: FONTS.sizes.medium,
+    color: COLORS.slateGray,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

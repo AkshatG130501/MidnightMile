@@ -468,8 +468,18 @@ export class GoogleMapsService {
             latitude: place.geometry.location.lat,
             longitude: place.geometry.location.lng,
           },
-          distance: this.calculateDistance(location, place.geometry.location),
+          distance: this.calculateDistance(location, {
+            latitude: place.geometry.location.lat,
+            longitude: place.geometry.location.lng,
+          }),
           rating: place.rating || 0,
+          vicinity:
+            place.vicinity ||
+            place.formatted_address ||
+            "Address not available",
+          isOpen: place.opening_hours?.open_now,
+          priceLevel: place.price_level,
+          types: place.types || [],
         }));
       } else {
         throw new Error(data.error_message || "Failed to get nearby places");
@@ -569,6 +579,22 @@ export class GoogleMapsService {
 
   // Calculate distance between two points
   static calculateDistance(point1, point2) {
+    // Validate input coordinates
+    if (
+      !point1 ||
+      !point2 ||
+      typeof point1.latitude !== "number" ||
+      typeof point1.longitude !== "number" ||
+      typeof point2.latitude !== "number" ||
+      typeof point2.longitude !== "number"
+    ) {
+      console.warn("Invalid coordinates for distance calculation:", {
+        point1,
+        point2,
+      });
+      return "0m";
+    }
+
     const R = 6371; // Earth's radius in kilometers
     const dLat = this.toRadians(point2.latitude - point1.latitude);
     const dLon = this.toRadians(point2.longitude - point1.longitude);
@@ -582,6 +608,12 @@ export class GoogleMapsService {
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
+
+    // Validate the calculated distance
+    if (isNaN(distance) || distance < 0) {
+      console.warn("Invalid distance calculated:", distance);
+      return "0m";
+    }
 
     return distance < 1
       ? `${Math.round(distance * 1000)}m`
