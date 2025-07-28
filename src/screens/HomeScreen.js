@@ -1049,7 +1049,7 @@ export default function HomeScreen() {
     const fullAddress =
       (suggestion.main_text || "") +
       (suggestion.secondary_text ? `, ${suggestion.secondary_text}` : "");
-    setDweestination(fullAddress);
+    setDestination(fullAddress);
     setShowSuggestions(false);
     setAutocompleteSuggestions([]);
     setIsLoadingRoutes(true);
