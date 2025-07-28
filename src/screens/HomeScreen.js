@@ -49,19 +49,54 @@ export default function HomeScreen() {
   const [showAllRoutes, setShowAllRoutes] = useState(false);
   const [routeFilterMode, setRouteFilterMode] = useState("safe"); // "safe", "all", "fastest"
 
+  // Initialize location tracking
+  useEffect(() => {
+    (async () => {
+      try {
+        // Request location permissions
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permission Denied",
+            "Please grant location permissions to use navigation features.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+
+        // Get current location
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        setLocation(currentLocation);
+
+        // Update map region to current location
+        setMapRegion({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        });
+      } catch (error) {
+        console.error("Error getting location:", error);
+        Alert.alert(
+          "Location Error",
+          "Unable to get your current location. Please check your device settings.",
+          [{ text: "OK" }]
+        );
+      }
+    })();
+  }, []);
+
   // Google Maps-style suggestion categories
   const [recentSearches, setRecentSearches] = useState([]);
-  const [savedPlaces, setSavedPlaces] = useState([
-    { id: "home", title: "Home", address: "Set home location", icon: "home" },
-    {
-      id: "work",
-      title: "Work",
-      address: "Set work location",
-      icon: "business",
-    },
-  ]);
+  const [savedPlaces, setSavedPlaces] = useState([]);
   const [contextualSuggestions, setContextualSuggestions] = useState([]);
   const [nearbySuggestions, setNearbySuggestions] = useState([]);
+
+  // Ensure unique IDs for nearby safe spots
+  const generateUniqueId = (prefix) =>
+    `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [navigationStartTime, setNavigationStartTime] = useState(null);
@@ -85,19 +120,19 @@ export default function HomeScreen() {
   // Sample safe spots data - this will be replaced by Google Places API
   const sampleSafeSpots = [
     {
-      id: 1,
+      id: "police_station_1",
       title: "Police Station",
       coordinate: { latitude: 37.78925, longitude: -122.4314 },
       type: "police",
     },
     {
-      id: 2,
+      id: "pharmacy_1",
       title: "24/7 Pharmacy",
       coordinate: { latitude: 37.78625, longitude: -122.4344 },
       type: "pharmacy",
     },
     {
-      id: 3,
+      id: "hospital_1",
       title: "Hospital",
       coordinate: { latitude: 37.79025, longitude: -122.4304 },
       type: "hospital",
@@ -253,26 +288,7 @@ export default function HomeScreen() {
       ];
     } else if (hour >= 17 && hour < 22) {
       // Evening suggestions
-      timeBasedSuggestions = [
-        {
-          title: "Dinner",
-          type: "category",
-          icon: "restaurant",
-          query: "dinner near me",
-        },
-        {
-          title: "Shopping",
-          type: "category",
-          icon: "storefront",
-          query: "shopping mall near me",
-        },
-        {
-          title: "Entertainment",
-          type: "category",
-          icon: "film",
-          query: "cinema near me",
-        },
-      ];
+      timeBasedSuggestions = [];
     } else {
       // Night/late suggestions - safety focused
       timeBasedSuggestions = [
@@ -669,9 +685,21 @@ export default function HomeScreen() {
       ]);
 
       const allSafeSpots = [
-        ...police.map((spot) => ({ ...spot, type: "police" })),
-        ...hospitals.map((spot) => ({ ...spot, type: "hospital" })),
-        ...pharmacies.map((spot) => ({ ...spot, type: "pharmacy" })),
+        ...police.map((spot) => ({
+          ...spot,
+          id: spot.id || generateUniqueId("police"),
+          type: "police",
+        })),
+        ...hospitals.map((spot) => ({
+          ...spot,
+          id: spot.id || generateUniqueId("hospital"),
+          type: "hospital",
+        })),
+        ...pharmacies.map((spot) => ({
+          ...spot,
+          id: spot.id || generateUniqueId("pharmacy"),
+          type: "pharmacy",
+        })),
       ];
 
       // Remove duplicates based on place ID
@@ -726,8 +754,10 @@ export default function HomeScreen() {
       );
 
       // Apply filtering and sorting based on the selected filter mode
-      console.log(`🔄 Applying filter mode: ${routeFilterMode} to ${allRoutes.length} routes`);
-      
+      console.log(
+        `🔄 Applying filter mode: ${routeFilterMode} to ${allRoutes.length} routes`
+      );
+
       if (routeFilterMode === "safe") {
         // Safest routes: Sort by safety score (highest first), then by duration
         fetchedRoutes = allRoutes.sort((a, b) => {
@@ -736,36 +766,49 @@ export default function HomeScreen() {
           }
           return a.legs[0].duration.value - b.legs[0].duration.value; // Then by duration
         });
-        console.log(`✅ Safe routes sorted by safety score. Top route safety: ${fetchedRoutes[0]?.safetyScore}/100`);
+        console.log(
+          `✅ Safe routes sorted by safety score. Top route safety: ${fetchedRoutes[0]?.safetyScore}/100`
+        );
       } else if (routeFilterMode === "fastest") {
         // Fastest routes: Sort by duration only, regardless of safety
         fetchedRoutes = allRoutes.sort(
           (a, b) => a.legs[0].duration.value - b.legs[0].duration.value
         );
-        console.log(`✅ Fastest routes sorted by duration. Top route time: ${fetchedRoutes[0]?.estimatedTime}`);
+        console.log(
+          `✅ Fastest routes sorted by duration. Top route time: ${fetchedRoutes[0]?.estimatedTime}`
+        );
       } else if (routeFilterMode === "all") {
         // All routes: Show all routes with balanced sorting (safety + efficiency)
         fetchedRoutes = allRoutes.sort((a, b) => {
           // Balanced scoring: 60% safety, 40% time efficiency
           const safetyWeight = 0.6;
           const timeWeight = 0.4;
-          
+
           // Normalize safety score (0-100) and time efficiency (inverse of duration)
           const aSafetyNorm = a.safetyScore / 100;
           const bSafetyNorm = b.safetyScore / 100;
-          
+
           // For time efficiency, shorter duration = higher score
-          const maxDuration = Math.max(a.legs[0].duration.value, b.legs[0].duration.value);
-          const aTimeNorm = (maxDuration - a.legs[0].duration.value) / maxDuration;
-          const bTimeNorm = (maxDuration - b.legs[0].duration.value) / maxDuration;
-          
+          const maxDuration = Math.max(
+            a.legs[0].duration.value,
+            b.legs[0].duration.value
+          );
+          const aTimeNorm =
+            (maxDuration - a.legs[0].duration.value) / maxDuration;
+          const bTimeNorm =
+            (maxDuration - b.legs[0].duration.value) / maxDuration;
+
           // Calculate composite scores
-          const aComposite = (aSafetyNorm * safetyWeight) + (aTimeNorm * timeWeight);
-          const bComposite = (bSafetyNorm * safetyWeight) + (bTimeNorm * timeWeight);
-          
+          const aComposite =
+            aSafetyNorm * safetyWeight + aTimeNorm * timeWeight;
+          const bComposite =
+            bSafetyNorm * safetyWeight + bTimeNorm * timeWeight;
+
           return bComposite - aComposite; // Higher composite score first
         });
-        console.log(`✅ All routes sorted by balanced score. Top route: safety ${fetchedRoutes[0]?.safetyScore}/100, time ${fetchedRoutes[0]?.estimatedTime}`);
+        console.log(
+          `✅ All routes sorted by balanced score. Top route: safety ${fetchedRoutes[0]?.safetyScore}/100, time ${fetchedRoutes[0]?.estimatedTime}`
+        );
       }
 
       setRoutes(fetchedRoutes);
@@ -849,9 +892,9 @@ export default function HomeScreen() {
       case "police":
         return "shield";
       case "pharmacy":
-        return "medical";
+        return "medkit-outline";
       case "hospital":
-        return "medical-outline";
+        return "business-outline";
       default:
         return "location";
     }
@@ -862,7 +905,7 @@ export default function HomeScreen() {
       case "police":
         return COLORS.deepNavy;
       case "hospital":
-        return COLORS.warningRed;
+        return COLORS.safeGreen;
       case "pharmacy":
         return COLORS.safeGreen;
       default:
@@ -938,6 +981,13 @@ export default function HomeScreen() {
     console.log(`📍 Current location state:`, location ? "Available" : "NULL");
     console.log(`📍 Location coords:`, location?.coords ? "Available" : "NULL");
 
+    // Update the input field immediately with the full address
+    const fullAddress =
+      (suggestion.main_text || "") +
+      (suggestion.secondary_text ? `, ${suggestion.secondary_text}` : "");
+    setDestination(fullAddress);
+    setShowSuggestions(false);
+
     setIsProcessingSuggestion(true);
 
     try {
@@ -995,8 +1045,11 @@ export default function HomeScreen() {
 
   // Helper function to process the autocomplete suggestion
   const processAutocompleteSuggestion = async (suggestion, currentLocation) => {
-    // Immediately update the input and hide suggestions for better UX
-    setDestination(suggestion.main_text);
+    // Immediately update the input with the full suggestion text and hide suggestions for better UX
+    const fullAddress =
+      (suggestion.main_text || "") +
+      (suggestion.secondary_text ? `, ${suggestion.secondary_text}` : "");
+    setDweestination(fullAddress);
     setShowSuggestions(false);
     setAutocompleteSuggestions([]);
     setIsLoadingRoutes(true);
@@ -1062,8 +1115,20 @@ export default function HomeScreen() {
   };
 
   const handleInputFocus = () => {
-    // Always show suggestions on focus
-    if (destination.length >= 2) {
+    // Show "No recent searches" message when input is empty
+    if (destination.length === 0) {
+      setShowSuggestions(true);
+      setAutocompleteSuggestions([
+        {
+          main_text: "No recent searches",
+          secondary_text: "",
+          type: "message",
+          title: "No recent searches", // Adding title for rendering
+        },
+      ]);
+    }
+    // Show autocomplete suggestions when typing
+    else if (destination.length >= 2) {
       setShowSuggestions(true);
       // Trigger autocomplete immediately if not already done
       if (autocompleteSuggestions.length === 0) {
@@ -1506,13 +1571,21 @@ export default function HomeScreen() {
                             color={COLORS.mutedTeal}
                           />
                           <View style={styles.suggestionTextContainer}>
-                            <Text style={styles.suggestionMainText}>
-                              {suggestion.main_text}
-                            </Text>
-                            {suggestion.secondary_text && (
-                              <Text style={styles.suggestionSecondaryText}>
-                                {suggestion.secondary_text}
+                            {suggestion.type === "message" ? (
+                              <Text style={styles.suggestionMainText}>
+                                {suggestion.title}
                               </Text>
+                            ) : (
+                              <>
+                                <Text style={styles.suggestionMainText}>
+                                  {suggestion.main_text}
+                                </Text>
+                                {suggestion.secondary_text && (
+                                  <Text style={styles.suggestionSecondaryText}>
+                                    {suggestion.secondary_text}
+                                  </Text>
+                                )}
+                              </>
                             )}
                           </View>
                         </TouchableOpacity>
@@ -1697,8 +1770,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-
-
         {/* Map */}
         <View style={styles.mapContainer}>
           <MapView
@@ -1828,7 +1899,7 @@ export default function HomeScreen() {
                 >
                   <Ionicons
                     name={getMarkerIcon(spot.type)}
-                    size={16}
+                    size={14}
                     color={COLORS.white}
                   />
                 </View>
@@ -1990,7 +2061,8 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.routeFilterButton,
-                      routeFilterMode === "safe" && styles.routeFilterButtonActive,
+                      routeFilterMode === "safe" &&
+                        styles.routeFilterButtonActive,
                     ]}
                     onPress={() => {
                       setRouteFilterMode("safe");
@@ -2001,13 +2073,16 @@ export default function HomeScreen() {
                       name="shield-checkmark"
                       size={16}
                       color={
-                        routeFilterMode === "safe" ? COLORS.white : COLORS.mutedTeal
+                        routeFilterMode === "safe"
+                          ? COLORS.white
+                          : COLORS.mutedTeal
                       }
                     />
                     <Text
                       style={[
                         styles.routeFilterText,
-                        routeFilterMode === "safe" && styles.routeFilterTextActive,
+                        routeFilterMode === "safe" &&
+                          styles.routeFilterTextActive,
                       ]}
                     >
                       Safest
@@ -2048,7 +2123,8 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.routeFilterButton,
-                      routeFilterMode === "all" && styles.routeFilterButtonActive,
+                      routeFilterMode === "all" &&
+                        styles.routeFilterButtonActive,
                     ]}
                     onPress={() => {
                       setRouteFilterMode("all");
@@ -2059,13 +2135,16 @@ export default function HomeScreen() {
                       name="list"
                       size={16}
                       color={
-                        routeFilterMode === "all" ? COLORS.white : COLORS.mutedTeal
+                        routeFilterMode === "all"
+                          ? COLORS.white
+                          : COLORS.mutedTeal
                       }
                     />
                     <Text
                       style={[
                         styles.routeFilterText,
-                        routeFilterMode === "all" && styles.routeFilterTextActive,
+                        routeFilterMode === "all" &&
+                          styles.routeFilterTextActive,
                       ]}
                     >
                       All Options
@@ -2118,7 +2197,15 @@ export default function HomeScreen() {
                     <Text style={styles.routeText}>
                       Route {index + 1}
                       {index === 0 && (
-                        <Text style={styles.bestRouteIndicator}> • Best for {routeFilterMode === "safe" ? "Safety" : routeFilterMode === "fastest" ? "Speed" : "Balance"}</Text>
+                        <Text style={styles.bestRouteIndicator}>
+                          {" "}
+                          • Best for{" "}
+                          {routeFilterMode === "safe"
+                            ? "Safety"
+                            : routeFilterMode === "fastest"
+                            ? "Speed"
+                            : "Balance"}
+                        </Text>
                       )}
                     </Text>
                     <Text style={styles.routeDetails}>
@@ -2498,8 +2585,8 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   customMarker: {
-    width: 30,
-    height: 30,
+    width: 24,
+    height: 24,
     borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
