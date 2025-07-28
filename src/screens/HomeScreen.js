@@ -45,8 +45,11 @@ const { width, height } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const [location, setLocation] = useState(null);
+  const [fromLocation, setFromLocation] = useState("");
+  const [fromLocationCoords, setFromLocationCoords] = useState(null);
   const [destination, setDestination] = useState("");
   const [destinationCoords, setDestinationCoords] = useState(null);
+  const [activeField, setActiveField] = useState(null); // 'from' or 'to'
   const [isAICompanionActive, setIsAICompanionActive] = useState(false);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -84,6 +87,8 @@ export default function HomeScreen() {
           accuracy: Location.Accuracy.High,
         });
         setLocation(currentLocation);
+        setFromLocation("Current Location");
+        setFromLocationCoords(currentLocation.coords);
 
         // Update map region to current location
         setMapRegion({
@@ -198,6 +203,8 @@ export default function HomeScreen() {
 
         setLocation(currentLocation);
         setLiveLocation(currentLocation);
+        setFromLocation("Current Location");
+        setFromLocationCoords(currentLocation.coords);
         const newRegion = {
           latitude: currentLocation.coords.latitude,
           longitude: currentLocation.coords.longitude,
@@ -405,20 +412,27 @@ export default function HomeScreen() {
   // Debounced autocomplete search
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (destination.length >= 2) {
-        handleAutocompleteSearch(destination);
+      const activeInput = activeField === "from" ? fromLocation : destination;
+      if (
+        activeInput &&
+        activeInput.length >= 2 &&
+        activeInput !== "Current Location"
+      ) {
+        handleAutocompleteSearch(activeInput);
       } else {
         setAutocompleteSuggestions([]);
       }
     }, 300); // 300ms delay
 
     return () => clearTimeout(timeoutId);
-  }, [destination, location]);
+  }, [fromLocation, destination, location, activeField]);
 
   // Show suggestions when autocomplete results are available
   useEffect(() => {
+    const activeInput = activeField === "from" ? fromLocation : destination;
     if (
-      destination.length >= 2 &&
+      activeInput &&
+      activeInput.length >= 2 &&
       (autocompleteSuggestions.length > 0 || isLoadingAutocomplete)
     ) {
       setShowSuggestions(true);
@@ -627,12 +641,13 @@ export default function HomeScreen() {
   };
 
   // Validate if destination is within 10 miles (16.09 km) from current location
-  const validateDestinationDistance = (currentCoords, destinationCoords) => {
+  // Validate if the distance between FROM and TO is within 10 miles
+  const validateRouteDistance = (fromCoords, toCoords) => {
     const distance = calculateDistance(
-      currentCoords.latitude,
-      currentCoords.longitude,
-      destinationCoords.latitude,
-      destinationCoords.longitude
+      fromCoords.latitude,
+      fromCoords.longitude,
+      toCoords.latitude,
+      toCoords.longitude
     );
 
     const distanceInMiles = (distance / 1609.34).toFixed(1); // Convert to miles for display
@@ -762,7 +777,19 @@ export default function HomeScreen() {
       return;
     }
 
-    if (!location || !location.coords) {
+    // Determine the starting location
+    let startLocation;
+    let startCoords;
+
+    if (fromLocationCoords && fromLocation !== "Current Location") {
+      // Use the FROM location if it's set and not current location
+      startLocation = fromLocation;
+      startCoords = fromLocationCoords;
+    } else if (location && location.coords) {
+      // Use current location as fallback
+      startLocation = "Current Location";
+      startCoords = location.coords;
+    } else {
       Alert.alert(
         "Location Error",
         "Unable to get your current location. Please ensure location services are enabled and try again."
@@ -778,16 +805,16 @@ export default function HomeScreen() {
         destination
       );
 
-      // Validate distance - check if destination is within 10 miles
-      const distanceValidation = validateDestinationDistance(
-        location.coords,
+      // Validate distance - check if route distance is within 10 miles
+      const distanceValidation = validateRouteDistance(
+        startCoords,
         destinationLocation
       );
 
       if (!distanceValidation.isWithinLimit) {
         Alert.alert(
-          "Destination Too Far",
-          `The destination is ${distanceValidation.distanceInMiles} miles away. For your safety, Midnight Mile only supports destinations within ${MAX_DESTINATION_DISTANCE_MILES} miles of your current location.\n\nPlease choose a closer destination.`,
+          "Route Too Long",
+          `The route distance is ${distanceValidation.distanceInMiles} miles. For your safety, Midnight Mile only supports routes within ${MAX_DESTINATION_DISTANCE_MILES} miles between start and destination.\n\nPlease choose closer locations.`,
           [
             {
               text: "Choose Another",
@@ -808,7 +835,7 @@ export default function HomeScreen() {
       }
 
       console.log(
-        `✅ Destination is ${distanceValidation.distanceInMiles} miles away - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
+        `✅ Route distance is ${distanceValidation.distanceInMiles} miles - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
       );
       setDestinationCoords(destinationLocation);
 
@@ -816,7 +843,7 @@ export default function HomeScreen() {
 
       // Get all possible routes first, then filter/sort based on selected mode
       const allRoutes = await GoogleMapsService.getAllPossibleRoutes(
-        location.coords,
+        startCoords,
         destinationLocation
       );
 
@@ -885,14 +912,13 @@ export default function HomeScreen() {
 
       // Update map region to show both origin and destination
       const midpointLat =
-        (location.coords.latitude + destinationLocation.latitude) / 2;
+        (startCoords.latitude + destinationLocation.latitude) / 2;
       const midpointLng =
-        (location.coords.longitude + destinationLocation.longitude) / 2;
+        (startCoords.longitude + destinationLocation.longitude) / 2;
       const latDelta =
-        Math.abs(location.coords.latitude - destinationLocation.latitude) * 1.5;
+        Math.abs(startCoords.latitude - destinationLocation.latitude) * 1.5;
       const lngDelta =
-        Math.abs(location.coords.longitude - destinationLocation.longitude) *
-        1.5;
+        Math.abs(startCoords.longitude - destinationLocation.longitude) * 1.5;
 
       setMapRegion({
         latitude: midpointLat,
@@ -1082,6 +1108,7 @@ export default function HomeScreen() {
   const handleSuggestionSelect = (suggestion) => {
     console.log(`🎯 Selected suggestion:`, suggestion);
     console.log(`📍 Current location available:`, !!location);
+    console.log(`📍 Active field:`, activeField);
 
     setIsProcessingSuggestion(true);
     setShowSuggestions(false);
@@ -1091,19 +1118,34 @@ export default function HomeScreen() {
     if (suggestion.type === "category" || suggestion.type === "safety") {
       // For category suggestions, use the query to search
       const searchTerm = suggestion.query || suggestion.title;
-      setDestination(searchTerm);
+
+      if (activeField === "from") {
+        setFromLocation(searchTerm);
+        // For FROM field, we would typically search for nearby locations
+        // For now, just treat it as a regular search term
+      } else {
+        setDestination(searchTerm);
+      }
+
       addToRecentSearches(suggestion.title);
 
       setTimeout(() => {
         console.log(`🚀 Starting category search for: ${searchTerm}`);
-        handleDestinationSearch();
+        if (activeField === "to") {
+          handleDestinationSearch();
+        }
         setIsProcessingSuggestion(false);
       }, 100);
     } else if (suggestion.type === "saved") {
       // Handle saved places (Home, Work)
       if (suggestion.coords) {
-        setDestination(suggestion.title);
-        setDestinationCoords(suggestion.coords);
+        if (activeField === "from") {
+          setFromLocation(suggestion.title);
+          setFromLocationCoords(suggestion.coords);
+        } else {
+          setDestination(suggestion.title);
+          setDestinationCoords(suggestion.coords);
+        }
         addToRecentSearches(suggestion.title, suggestion.coords);
         // You would handle saved place navigation here
       } else {
@@ -1126,12 +1168,26 @@ export default function HomeScreen() {
     } else {
       // Handle recent searches or regular text
       const searchTerm = suggestion.title || suggestion;
-      setDestination(searchTerm);
+
+      if (activeField === "from") {
+        setFromLocation(searchTerm);
+        // Clear existing routes when FROM location changes
+        if (routes.length > 0) {
+          setRoutes([]);
+          setSelectedRoute(null);
+          console.log("🧹 Cleared routes due to FROM location change");
+        }
+      } else {
+        setDestination(searchTerm);
+      }
+
       addToRecentSearches(searchTerm);
 
       setTimeout(() => {
         console.log(`🚀 Starting destination search for: ${searchTerm}`);
-        handleDestinationSearch();
+        if (activeField === "to") {
+          handleDestinationSearch();
+        }
         setIsProcessingSuggestion(false);
       }, 100);
     }
@@ -1142,12 +1198,18 @@ export default function HomeScreen() {
     console.log(`📍 Suggestion details:`, suggestion);
     console.log(`📍 Current location state:`, location ? "Available" : "NULL");
     console.log(`📍 Location coords:`, location?.coords ? "Available" : "NULL");
+    console.log(`📍 Active field:`, activeField);
 
     // Update the input field immediately with the full address
     const fullAddress =
       (suggestion.main_text || "") +
       (suggestion.secondary_text ? `, ${suggestion.secondary_text}` : "");
-    setDestination(fullAddress);
+
+    if (activeField === "from") {
+      setFromLocation(fullAddress);
+    } else {
+      setDestination(fullAddress);
+    }
     setShowSuggestions(false);
 
     setIsProcessingSuggestion(true);
@@ -1174,6 +1236,10 @@ export default function HomeScreen() {
             console.log(`✅ Successfully got current location`);
             setLocation(currentLocation);
             setLiveLocation(currentLocation);
+            // Update FROM field if it's still "Current Location"
+            if (fromLocation === "Current Location") {
+              setFromLocationCoords(currentLocation.coords);
+            }
 
             // Continue with the selection process using the fresh location
             await processAutocompleteSuggestion(suggestion, currentLocation);
@@ -1211,10 +1277,14 @@ export default function HomeScreen() {
     const fullAddress =
       (suggestion.main_text || "") +
       (suggestion.secondary_text ? `, ${suggestion.secondary_text}` : "");
-    setDestination(fullAddress);
+
+    if (activeField === "from") {
+      setFromLocation(fullAddress);
+    } else {
+      setDestination(fullAddress);
+    }
     setShowSuggestions(false);
     setAutocompleteSuggestions([]);
-    setIsLoadingRoutes(true);
 
     console.log(`🎯 Selected suggestion: ${suggestion.main_text}`);
     console.log(
@@ -1227,16 +1297,51 @@ export default function HomeScreen() {
     );
     console.log(`📍 Place details received:`, placeDetails);
 
-    // Validate distance - check if destination is within 10 miles
-    const distanceValidation = validateDestinationDistance(
-      currentLocation.coords,
-      placeDetails
-    );
+    if (activeField === "from") {
+      // Handle FROM field selection
+      setFromLocationCoords(placeDetails);
+      addToRecentSearches(suggestion.main_text, placeDetails);
+
+      // If TO is already set, validate the new route distance
+      if (destinationCoords) {
+        const distanceValidation = validateRouteDistance(
+          placeDetails,
+          destinationCoords
+        );
+
+        if (!distanceValidation.isWithinLimit) {
+          Alert.alert(
+            "Route Too Long",
+            `The route distance would be ${distanceValidation.distanceInMiles} miles. For your safety, Midnight Mile only supports routes within ${MAX_DESTINATION_DISTANCE_MILES} miles between start and destination.\n\nPlease choose a closer starting location.`,
+            [{ text: "OK" }]
+          );
+          return;
+        }
+      }
+
+      // Clear existing routes when FROM location changes
+      if (routes.length > 0) {
+        setRoutes([]);
+        setSelectedRoute(null);
+        console.log("🧹 Cleared routes due to FROM location change");
+      }
+      console.log(`✅ FROM location set successfully`);
+      return;
+    }
+
+    // Handle TO field selection (existing logic)
+    setIsLoadingRoutes(true);
+
+    // Determine the FROM coordinates for distance validation
+    const fromCoords = fromLocationCoords || currentLocation.coords;
+
+    // Validate distance - check if route distance is within 10 miles
+    const distanceValidation = validateRouteDistance(fromCoords, placeDetails);
 
     if (!distanceValidation.isWithinLimit) {
       Alert.alert(
-        "Destination Too Far",
-        `The selected location is ${distanceValidation.distanceInMiles} miles away. For your safety, Midnight Mile only supports destinations within ${MAX_DESTINATION_DISTANCE_MILES} miles of your current location.\n\nPlease choose a closer destination.`,
+        "Route Too Long",
+        `The route distance is ${distanceValidation.distanceInMiles} miles. For your safety, Midnight Mile only supports routes within ${MAX_DESTINATION_DISTANCE_MILES} miles between start and destination.\n\nPlease choose closer locations.`,
         [
           {
             text: "Choose Another",
@@ -1257,19 +1362,17 @@ export default function HomeScreen() {
     }
 
     console.log(
-      `✅ Selected place is ${distanceValidation.distanceInMiles} miles away - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
+      `✅ Route distance is ${distanceValidation.distanceInMiles} miles - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
     );
     setDestinationCoords(placeDetails);
 
     // Add to recent searches
     addToRecentSearches(suggestion.main_text, placeDetails);
 
-    console.log(
-      `🚶 Getting safe routes from current location to destination...`
-    );
-    // Get safe routes using the place details
+    console.log(`🚶 Getting safe routes from start location to destination...`);
+    // Get safe routes using the FROM coordinates and destination place details
     const safeRoutes = await GoogleMapsService.getSafeRoutes(
-      currentLocation.coords,
+      fromCoords,
       placeDetails
     );
 
@@ -1281,16 +1384,13 @@ export default function HomeScreen() {
     }
 
     // Update map region - with null checks
-    if (currentLocation && currentLocation.coords && placeDetails) {
-      const midpointLat =
-        (currentLocation.coords.latitude + placeDetails.latitude) / 2;
-      const midpointLng =
-        (currentLocation.coords.longitude + placeDetails.longitude) / 2;
+    if (fromCoords && placeDetails) {
+      const midpointLat = (fromCoords.latitude + placeDetails.latitude) / 2;
+      const midpointLng = (fromCoords.longitude + placeDetails.longitude) / 2;
       const latDelta =
-        Math.abs(currentLocation.coords.latitude - placeDetails.latitude) * 1.5;
+        Math.abs(fromCoords.latitude - placeDetails.latitude) * 1.5;
       const lngDelta =
-        Math.abs(currentLocation.coords.longitude - placeDetails.longitude) *
-        1.5;
+        Math.abs(fromCoords.longitude - placeDetails.longitude) * 1.5;
 
       setMapRegion({
         latitude: midpointLat,
@@ -1310,8 +1410,14 @@ export default function HomeScreen() {
   };
 
   const handleInputFocus = () => {
+    const activeInput = activeField === "from" ? fromLocation : destination;
+
     // Show "No recent searches" message when input is empty
-    if (destination.length === 0) {
+    if (
+      !activeInput ||
+      activeInput.length === 0 ||
+      activeInput === "Current Location"
+    ) {
       setShowSuggestions(true);
       setAutocompleteSuggestions([
         {
@@ -1323,11 +1429,11 @@ export default function HomeScreen() {
       ]);
     }
     // Show autocomplete suggestions when typing
-    else if (destination.length >= 2) {
+    else if (activeInput.length >= 2) {
       setShowSuggestions(true);
       // Trigger autocomplete immediately if not already done
       if (autocompleteSuggestions.length === 0) {
-        handleAutocompleteSearch(destination);
+        handleAutocompleteSearch(activeInput);
       }
     } else {
       // Show Google Maps-style suggestions when input is empty/short
@@ -1344,8 +1450,14 @@ export default function HomeScreen() {
   };
 
   const handleInputBlur = () => {
+    const activeInput = activeField === "from" ? fromLocation : destination;
+
     // Don't hide suggestions at all when user is actively searching and we have autocomplete results
-    if (destination.length >= 2 && autocompleteSuggestions.length > 0) {
+    if (
+      activeInput &&
+      activeInput.length >= 2 &&
+      autocompleteSuggestions.length > 0
+    ) {
       console.log(
         `🔍 Input blur - but keeping suggestions visible because user is searching`
       );
@@ -1384,15 +1496,29 @@ export default function HomeScreen() {
     }
   };
 
-  const handleClearDestination = () => {
-    // Clear the destination input and reset related state
-    setDestination("");
-    setDestinationCoords(null);
-    setRoutes([]);
-    setSelectedRoute(null);
+  const handleClearField = (field = null) => {
+    const fieldToClear = field || activeField;
+
+    if (fieldToClear === "from") {
+      // Clear FROM field and reset to Current Location
+      setFromLocation("Current Location");
+      setFromLocationCoords(location?.coords || null);
+    } else {
+      // Clear TO field
+      setDestination("");
+      setDestinationCoords(null);
+      setRoutes([]);
+      setSelectedRoute(null);
+    }
+
     setAutocompleteSuggestions([]);
     setShowSuggestions(false);
-    console.log("🧹 Destination cleared");
+    console.log(`🧹 ${fieldToClear.toUpperCase()} field cleared`);
+  };
+
+  const handleClearDestination = () => {
+    // Backward compatibility - clear destination field
+    handleClearField("to");
   };
 
   // Helper function to parse duration text to minutes
@@ -1662,17 +1788,115 @@ export default function HomeScreen() {
           {/* User Profile Menu */}
           <UserProfileMenu />
 
-          {/* Search Bar */}
+          {/* Search Container with FROM and TO fields */}
           <View style={styles.searchContainer}>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={COLORS.slateGray} />
+            {/* FROM Field */}
+            <View
+              style={[
+                styles.searchBar,
+                activeField === "from" && styles.searchBarActive,
+              ]}
+            >
+              <Ionicons
+                name="radio-button-on"
+                size={16}
+                color={COLORS.mutedTeal}
+              />
               <TextInput
                 style={styles.searchInput}
-                placeholder={`Where are you going? (within ${MAX_DESTINATION_DISTANCE_MILES} miles)`}
+                placeholder="From location"
+                placeholderTextColor={COLORS.slateGray}
+                value={fromLocation}
+                onChangeText={(text) => {
+                  setFromLocation(text);
+                  setActiveField("from");
+                  if (text.length >= 2 && text !== "Current Location") {
+                    setShowSuggestions(true);
+                  } else if (text.length === 0) {
+                    // Show Google Maps-style suggestions when empty
+                    const hasAnySuggestions =
+                      recentSearches.length > 0 ||
+                      savedPlaces.length > 0 ||
+                      contextualSuggestions.length > 0 ||
+                      nearbySuggestions.length > 0;
+                    setShowSuggestions(hasAnySuggestions);
+                    setAutocompleteSuggestions([]); // Clear autocomplete when text is cleared
+                  } else {
+                    // For text length 1, hide suggestions but don't clear autocomplete yet
+                    setShowSuggestions(false);
+                  }
+                }}
+                onFocus={() => {
+                  setActiveField("from");
+                  handleInputFocus();
+                }}
+                onBlur={handleInputBlur}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (
+                    fromLocation.trim() &&
+                    fromLocation !== "Current Location"
+                  ) {
+                    setFromLocation("");
+                    setFromLocationCoords(null);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={
+                    fromLocation.trim() && fromLocation !== "Current Location"
+                      ? "close"
+                      : "location"
+                  }
+                  size={16}
+                  color={COLORS.slateGray}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Swap Button */}
+            <TouchableOpacity
+              style={styles.swapButton}
+              onPress={() => {
+                const tempLocation = fromLocation;
+                const tempCoords = fromLocationCoords;
+                setFromLocation(destination || "Current Location");
+                setFromLocationCoords(
+                  destination ? destinationCoords : location?.coords
+                );
+                setDestination(
+                  tempLocation === "Current Location" ? "" : tempLocation
+                );
+                setDestinationCoords(
+                  tempLocation === "Current Location" ? null : tempCoords
+                );
+              }}
+            >
+              <Ionicons
+                name="swap-vertical"
+                size={20}
+                color={COLORS.mutedTeal}
+              />
+            </TouchableOpacity>
+
+            {/* TO Field */}
+            <View
+              style={[
+                styles.searchBar,
+                styles.toField,
+                activeField === "to" && styles.searchBarActive,
+              ]}
+            >
+              <Ionicons name="location" size={16} color={COLORS.safetyAmber} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={`Where to? (max ${MAX_DESTINATION_DISTANCE_MILES} miles from start)`}
                 placeholderTextColor={COLORS.slateGray}
                 value={destination}
                 onChangeText={(text) => {
                   setDestination(text);
+                  setActiveField("to");
                   if (text.length >= 2) {
                     setShowSuggestions(true);
                   } else if (text.length === 0) {
@@ -1690,7 +1914,10 @@ export default function HomeScreen() {
                   }
                 }}
                 onSubmitEditing={handleDestinationSearch}
-                onFocus={handleInputFocus}
+                onFocus={() => {
+                  setActiveField("to");
+                  handleInputFocus();
+                }}
                 onBlur={handleInputBlur}
               />
               <TouchableOpacity
@@ -1702,7 +1929,7 @@ export default function HomeScreen() {
               >
                 <Ionicons
                   name={destination.trim() ? "close" : "arrow-forward"}
-                  size={20}
+                  size={16}
                   color={
                     destination.trim() ? COLORS.slateGray : COLORS.mutedTeal
                   }
@@ -1754,7 +1981,11 @@ export default function HomeScreen() {
                   }}
                 >
                   {/* Loading state for autocomplete */}
-                  {destination.length >= 2 &&
+                  {activeField &&
+                    (
+                      (activeField === "from" ? fromLocation : destination) ||
+                      ""
+                    ).length >= 2 &&
                     isLoadingAutocomplete &&
                     autocompleteSuggestions.length === 0 && (
                       <View style={styles.loadingContainer}>
@@ -1769,7 +2000,11 @@ export default function HomeScreen() {
                     )}
 
                   {/* Autocomplete Results (show when typing and we have results) */}
-                  {destination.length >= 2 &&
+                  {activeField &&
+                    (
+                      (activeField === "from" ? fromLocation : destination) ||
+                      ""
+                    ).length >= 2 &&
                     autocompleteSuggestions.length > 0 && (
                       <>
                         <View style={styles.suggestionsHeaderContainer}>
@@ -1844,7 +2079,11 @@ export default function HomeScreen() {
                     )}
 
                   {/* Google Maps-style Suggestions (show when no text or short text) */}
-                  {destination.length < 2 && (
+                  {(!activeField ||
+                    (
+                      (activeField === "from" ? fromLocation : destination) ||
+                      ""
+                    ).length < 2) && (
                     <>
                       {/* Distance Limit Info */}
                       <View style={styles.distanceLimitInfo}>
@@ -1854,9 +2093,9 @@ export default function HomeScreen() {
                           color={COLORS.mutedTeal}
                         />
                         <Text style={styles.distanceLimitText}>
-                          For your safety, destinations are limited to{" "}
-                          {MAX_DESTINATION_DISTANCE_MILES} miles from your
-                          location
+                          For your safety, routes are limited to{" "}
+                          {MAX_DESTINATION_DISTANCE_MILES} miles between start
+                          and destination
                         </Text>
                       </View>
 
@@ -2075,17 +2314,20 @@ export default function HomeScreen() {
                   : undefined
               }
             >
-              {/* Current location marker - custom during navigation */}
-              {(location || liveLocation) && (
+              {/* Start location marker (FROM field or current location) */}
+              {(fromLocationCoords || location || liveLocation) && (
                 <Marker
                   coordinate={{
                     latitude:
-                      liveLocation?.coords.latitude || location.coords.latitude,
+                      fromLocationCoords?.latitude ||
+                      liveLocation?.coords.latitude ||
+                      location?.coords.latitude,
                     longitude:
+                      fromLocationCoords?.longitude ||
                       liveLocation?.coords.longitude ||
-                      location.coords.longitude,
+                      location?.coords.longitude,
                   }}
-                  title="Your Location"
+                  title={fromLocation || "Your Location"}
                   anchor={{ x: 0.5, y: 0.5 }}
                   rotation={isNavigating ? currentHeading : 0}
                 >
@@ -2358,6 +2600,7 @@ export default function HomeScreen() {
                     style={styles.routeFilterScroll}
                   >
                     <TouchableOpacity
+                      key="filter-safe"
                       style={[
                         styles.routeFilterButton,
                         routeFilterMode === "safe" &&
@@ -2389,6 +2632,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
 
                     <TouchableOpacity
+                      key="filter-fastest"
                       style={[
                         styles.routeFilterButton,
                         routeFilterMode === "fastest" &&
@@ -2420,6 +2664,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
 
                     <TouchableOpacity
+                      key="filter-all"
                       style={[
                         styles.routeFilterButton,
                         routeFilterMode === "all" &&
@@ -2459,7 +2704,12 @@ export default function HomeScreen() {
                 >
                   {routes.map((route, index) => (
                     <TouchableOpacity
-                      key={route.id || index}
+                      key={`route-${
+                        route.id ||
+                        `${index}-${route.safetyLevel || "unknown"}-${
+                          route.distance || "unknown"
+                        }`
+                      }`}
                       style={[
                         styles.routeOption,
                         selectedRoute?.id === route.id &&
@@ -2606,9 +2856,29 @@ const styles = StyleSheet.create({
     color: COLORS.deepNavy,
     fontFamily: FONTS.body,
   },
+  searchBarActive: {
+    borderWidth: 2,
+    borderColor: COLORS.mutedTeal,
+  },
+  toField: {
+    marginTop: SPACING.xs,
+  },
+  swapButton: {
+    position: "absolute",
+    right: SPACING.md,
+    top: 45, // Position between the two fields
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.white,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    ...SHADOWS.light,
+  },
   suggestionsContainer: {
     position: "absolute",
-    top: 60, // Position below the search bar (approximate height)
+    top: 120, // Position below both search bars (approximate height for two fields)
     left: SPACING.md,
     right: SPACING.md,
     backgroundColor: COLORS.white,
