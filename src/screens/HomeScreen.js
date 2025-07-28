@@ -29,6 +29,11 @@ import { GoogleMapsService } from "../services/GoogleMapsService";
 import { GoogleMapsTestUtils } from "../services/GoogleMapsTestUtils";
 import { UserProfileMenu } from "../components/UserProfileMenu";
 
+// Configuration constants
+const MAX_DESTINATION_DISTANCE_MILES = 10;
+const MAX_DESTINATION_DISTANCE_METERS =
+  MAX_DESTINATION_DISTANCE_MILES * 1609.34;
+
 const { width, height } = Dimensions.get("window");
 
 export default function HomeScreen() {
@@ -48,6 +53,8 @@ export default function HomeScreen() {
   const [currentCity, setCurrentCity] = useState("");
   const [showAllRoutes, setShowAllRoutes] = useState(false);
   const [routeFilterMode, setRouteFilterMode] = useState("safe"); // "safe", "all", "fastest"
+  const [isPreviewingRoute, setIsPreviewingRoute] = useState(false);
+  const [previewMapRegion, setPreviewMapRegion] = useState(null);
 
   // Initialize location tracking
   useEffect(() => {
@@ -611,6 +618,25 @@ export default function HomeScreen() {
     return R * c; // Distance in meters
   };
 
+  // Validate if destination is within 10 miles (16.09 km) from current location
+  const validateDestinationDistance = (currentCoords, destinationCoords) => {
+    const distance = calculateDistance(
+      currentCoords.latitude,
+      currentCoords.longitude,
+      destinationCoords.latitude,
+      destinationCoords.longitude
+    );
+
+    const distanceInMiles = (distance / 1609.34).toFixed(1); // Convert to miles for display
+    const isWithinLimit = distance <= MAX_DESTINATION_DISTANCE_METERS;
+
+    return {
+      isWithinLimit,
+      distance,
+      distanceInMiles,
+    };
+  };
+
   // Calculate bearing between two points
   const calculateBearing = (lat1, lon1, lat2, lon2) => {
     const φ1 = (lat1 * Math.PI) / 180;
@@ -742,6 +768,39 @@ export default function HomeScreen() {
       // Geocode the destination
       const destinationLocation = await GoogleMapsService.geocodeAddress(
         destination
+      );
+
+      // Validate distance - check if destination is within 10 miles
+      const distanceValidation = validateDestinationDistance(
+        location.coords,
+        destinationLocation
+      );
+
+      if (!distanceValidation.isWithinLimit) {
+        Alert.alert(
+          "Destination Too Far",
+          `The destination is ${distanceValidation.distanceInMiles} miles away. For your safety, Midnight Mile only supports destinations within ${MAX_DESTINATION_DISTANCE_MILES} miles of your current location.\n\nPlease choose a closer destination.`,
+          [
+            {
+              text: "Choose Another",
+              style: "default",
+            },
+            {
+              text: "Clear",
+              style: "cancel",
+              onPress: () => {
+                setDestination("");
+                setDestinationCoords(null);
+              },
+            },
+          ]
+        );
+        setIsLoadingRoutes(false);
+        return;
+      }
+
+      console.log(
+        `✅ Destination is ${distanceValidation.distanceInMiles} miles away - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
       );
       setDestinationCoords(destinationLocation);
 
@@ -915,6 +974,101 @@ export default function HomeScreen() {
 
   const selectRoute = (route) => {
     setSelectedRoute(route);
+
+    // Focus map on the selected route
+    if (route && route.overview_polyline && location && destinationCoords) {
+      console.log("🗺️ Focusing map on selected route...");
+
+      // Decode the route polyline to get all coordinates
+      const routeCoordinates = GoogleMapsService.decodePolyline(
+        route.overview_polyline.points
+      );
+
+      // Find the bounds of the route including start and end points
+      let minLat = Math.min(
+        location.coords.latitude,
+        destinationCoords.latitude
+      );
+      let maxLat = Math.max(
+        location.coords.latitude,
+        destinationCoords.latitude
+      );
+      let minLng = Math.min(
+        location.coords.longitude,
+        destinationCoords.longitude
+      );
+      let maxLng = Math.max(
+        location.coords.longitude,
+        destinationCoords.longitude
+      );
+
+      // Include all route coordinates in bounds calculation
+      routeCoordinates.forEach((coord) => {
+        minLat = Math.min(minLat, coord.latitude);
+        maxLat = Math.max(maxLat, coord.latitude);
+        minLng = Math.min(minLng, coord.longitude);
+        maxLng = Math.max(maxLng, coord.longitude);
+      });
+
+      // Add padding to the bounds (20% padding for better visibility)
+      const latPadding = (maxLat - minLat) * 0.2;
+      const lngPadding = (maxLng - minLng) * 0.2;
+
+      const routeRegion = {
+        latitude: (minLat + maxLat) / 2,
+        longitude: (minLng + maxLng) / 2,
+        latitudeDelta: Math.max(maxLat - minLat + latPadding, 0.01),
+        longitudeDelta: Math.max(maxLng - minLng + lngPadding, 0.01),
+      };
+
+      setMapRegion(routeRegion);
+
+      // Animate to the route region
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(routeRegion, 1000);
+      }
+
+      console.log("✅ Map focused on selected route");
+    }
+  };
+
+  // Zoom controls for route viewing
+  const handleZoomIn = () => {
+    if (mapRef.current) {
+      const currentRegion = isPreviewingRoute ? previewMapRegion : mapRegion;
+      const newRegion = {
+        ...currentRegion,
+        latitudeDelta: currentRegion.latitudeDelta * 0.7,
+        longitudeDelta: currentRegion.longitudeDelta * 0.7,
+      };
+
+      if (isPreviewingRoute) {
+        setPreviewMapRegion(newRegion);
+      } else {
+        setMapRegion(newRegion);
+      }
+
+      mapRef.current.animateToRegion(newRegion, 300);
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (mapRef.current) {
+      const currentRegion = isPreviewingRoute ? previewMapRegion : mapRegion;
+      const newRegion = {
+        ...currentRegion,
+        latitudeDelta: currentRegion.latitudeDelta * 1.4,
+        longitudeDelta: currentRegion.longitudeDelta * 1.4,
+      };
+
+      if (isPreviewingRoute) {
+        setPreviewMapRegion(newRegion);
+      } else {
+        setMapRegion(newRegion);
+      }
+
+      mapRef.current.animateToRegion(newRegion, 300);
+    }
   };
 
   const handleSuggestionSelect = (suggestion) => {
@@ -1064,6 +1218,39 @@ export default function HomeScreen() {
       suggestion.place_id
     );
     console.log(`📍 Place details received:`, placeDetails);
+
+    // Validate distance - check if destination is within 10 miles
+    const distanceValidation = validateDestinationDistance(
+      currentLocation.coords,
+      placeDetails
+    );
+
+    if (!distanceValidation.isWithinLimit) {
+      Alert.alert(
+        "Destination Too Far",
+        `The selected location is ${distanceValidation.distanceInMiles} miles away. For your safety, Midnight Mile only supports destinations within ${MAX_DESTINATION_DISTANCE_MILES} miles of your current location.\n\nPlease choose a closer destination.`,
+        [
+          {
+            text: "Choose Another",
+            style: "default",
+          },
+          {
+            text: "Clear",
+            style: "cancel",
+            onPress: () => {
+              setDestination("");
+              setDestinationCoords(null);
+            },
+          },
+        ]
+      );
+      setIsLoadingRoutes(false);
+      return;
+    }
+
+    console.log(
+      `✅ Selected place is ${distanceValidation.distanceInMiles} miles away - within ${MAX_DESTINATION_DISTANCE_MILES} mile limit`
+    );
     setDestinationCoords(placeDetails);
 
     // Add to recent searches
@@ -1346,6 +1533,81 @@ export default function HomeScreen() {
     );
   };
 
+  // Route Preview Functions
+  const handlePreviewRoute = () => {
+    if (!selectedRoute || !location || !destinationCoords) {
+      Alert.alert("Preview Error", "Please select a route to preview.");
+      return;
+    }
+
+    console.log("🔍 Previewing route...");
+    setIsPreviewingRoute(true);
+
+    // Calculate the region that encompasses the entire route
+    const routeCoordinates = GoogleMapsService.decodePolyline(
+      selectedRoute.overview_polyline.points
+    );
+
+    // Find the bounds of the route
+    let minLat = Math.min(location.coords.latitude, destinationCoords.latitude);
+    let maxLat = Math.max(location.coords.latitude, destinationCoords.latitude);
+    let minLng = Math.min(
+      location.coords.longitude,
+      destinationCoords.longitude
+    );
+    let maxLng = Math.max(
+      location.coords.longitude,
+      destinationCoords.longitude
+    );
+
+    // Include all route coordinates in bounds calculation
+    routeCoordinates.forEach((coord) => {
+      minLat = Math.min(minLat, coord.latitude);
+      maxLat = Math.max(maxLat, coord.latitude);
+      minLng = Math.min(minLng, coord.longitude);
+      maxLng = Math.max(maxLng, coord.longitude);
+    });
+
+    // Add padding to the bounds (15% padding)
+    const latPadding = (maxLat - minLat) * 0.15;
+    const lngPadding = (maxLng - minLng) * 0.15;
+
+    const previewRegion = {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max(maxLat - minLat + latPadding, 0.01),
+      longitudeDelta: Math.max(maxLng - minLng + lngPadding, 0.01),
+    };
+
+    setPreviewMapRegion(previewRegion);
+
+    // Animate to the preview region
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(previewRegion, 1000);
+    }
+
+    console.log("✅ Route preview activated");
+  };
+
+  const handleExitPreview = () => {
+    console.log("🔍 Exiting route preview...");
+    setIsPreviewingRoute(false);
+    setPreviewMapRegion(null);
+
+    // Return to normal view focused on current location
+    if (location && mapRef.current) {
+      const normalRegion = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      mapRef.current.animateToRegion(normalRegion, 1000);
+    }
+
+    console.log("✅ Route preview exited");
+  };
+
   const getCurrentStep = () => {
     if (
       !selectedRoute ||
@@ -1422,7 +1684,7 @@ export default function HomeScreen() {
             <Ionicons name="search" size={20} color={COLORS.slateGray} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Where are you going?"
+              placeholder={`Where are you going? (within ${MAX_DESTINATION_DISTANCE_MILES} miles)`}
               placeholderTextColor={COLORS.slateGray}
               value={destination}
               onChangeText={(text) => {
@@ -1596,6 +1858,20 @@ export default function HomeScreen() {
                 {/* Google Maps-style Suggestions (show when no text or short text) */}
                 {destination.length < 2 && (
                   <>
+                    {/* Distance Limit Info */}
+                    <View style={styles.distanceLimitInfo}>
+                      <Ionicons
+                        name="information-circle"
+                        size={16}
+                        color={COLORS.mutedTeal}
+                      />
+                      <Text style={styles.distanceLimitText}>
+                        For your safety, destinations are limited to{" "}
+                        {MAX_DESTINATION_DISTANCE_MILES} miles from your
+                        location
+                      </Text>
+                    </View>
+
                     {/* Recent Searches */}
                     {recentSearches.length > 0 && (
                       <>
@@ -1776,18 +2052,18 @@ export default function HomeScreen() {
             ref={mapRef}
             style={styles.map}
             provider={PROVIDER_GOOGLE}
-            region={mapRegion}
-            onRegionChangeComplete={setMapRegion}
+            region={isPreviewingRoute ? previewMapRegion : mapRegion}
+            onRegionChangeComplete={isPreviewingRoute ? null : setMapRegion}
             mapType="standard"
-            showsUserLocation={!isNavigating} // Hide default user location during navigation
-            showsMyLocationButton={!isNavigating} // Hide default location button during navigation
+            showsUserLocation={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
+            showsMyLocationButton={!isNavigating && !isPreviewingRoute} // Hide during navigation and preview
             showsTraffic={false}
             showsBuildings={true}
             showsIndoors={true}
-            showsPointsOfInterest={true}
-            showsCompass={true}
+            showsPointsOfInterest={!isPreviewingRoute} // Hide POI during preview for cleaner view
+            showsCompass={!isPreviewingRoute}
             showsScale={false}
-            rotateEnabled={true}
+            rotateEnabled={!isPreviewingRoute}
             scrollEnabled={true} // Always allow map interaction
             zoomEnabled={true}
             followsUserLocation={isNavigating} // Auto-follow during navigation
@@ -1881,60 +2157,106 @@ export default function HomeScreen() {
               />
             )}
 
-            {/* Safe spots markers */}
-            {safeSpots.map((spot, index) => (
-              <Marker
-                key={`${spot.type}-${spot.id}-${index}`}
-                coordinate={spot.coordinate}
-                title={spot.name || spot.title}
-                description={`Safe spot: ${spot.type} • ${
-                  spot.distance || "Nearby"
-                }`}
-              >
-                <View
-                  style={[
-                    styles.customMarker,
-                    { backgroundColor: getSpotColor(spot.type) },
-                  ]}
+            {/* Safe spots markers - hide during preview for cleaner view */}
+            {!isPreviewingRoute &&
+              safeSpots.map((spot, index) => (
+                <Marker
+                  key={`${spot.type}-${spot.id}-${index}`}
+                  coordinate={spot.coordinate}
+                  title={spot.name || spot.title}
+                  description={`Safe spot: ${spot.type} • ${
+                    spot.distance || "Nearby"
+                  }`}
                 >
-                  <Ionicons
-                    name={getMarkerIcon(spot.type)}
-                    size={14}
-                    color={COLORS.white}
-                  />
-                </View>
-              </Marker>
-            ))}
+                  <View
+                    style={[
+                      styles.customMarker,
+                      { backgroundColor: getSpotColor(spot.type) },
+                    ]}
+                  >
+                    <Ionicons
+                      name={getMarkerIcon(spot.type)}
+                      size={14}
+                      color={COLORS.white}
+                    />
+                  </View>
+                </Marker>
+              ))}
           </MapView>
 
-          {/* SOS Button */}
-          <TouchableOpacity style={styles.sosButton} onPress={handleSOS}>
-            <Ionicons name="warning" size={24} color={COLORS.white} />
-            <Text style={styles.sosText}>SOS</Text>
-          </TouchableOpacity>
+          {/* Route Preview Overlay */}
+          {isPreviewingRoute && (
+            <View style={styles.routePreviewOverlay}>
+              <View style={styles.previewHeader}>
+                <Text style={styles.previewTitle}>Route Preview</Text>
+                <TouchableOpacity
+                  style={styles.exitPreviewButton}
+                  onPress={handleExitPreview}
+                >
+                  <Ionicons name="close" size={24} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.previewInfo}>
+                <Text style={styles.previewRouteText}>
+                  {selectedRoute?.estimatedTime} • {selectedRoute?.distance}
+                </Text>
+                <Text style={styles.previewSafetyText}>
+                  Safety Score: {selectedRoute?.safetyScore || 0}/100
+                </Text>
+              </View>
+            </View>
+          )}
 
-          {/* AI Companion Button */}
-          <TouchableOpacity
-            style={[
-              styles.companionButton,
-              isAICompanionActive && styles.companionButtonActive,
-            ]}
-            onPress={toggleAICompanion}
-          >
-            <Ionicons
-              name={isAICompanionActive ? "mic" : "mic-off"}
-              size={24}
-              color={isAICompanionActive ? COLORS.white : COLORS.mutedTeal}
-            />
-            <Text
+          {/* SOS Button - hide during preview */}
+          {!isPreviewingRoute && (
+            <TouchableOpacity style={styles.sosButton} onPress={handleSOS}>
+              <Ionicons name="warning" size={24} color={COLORS.white} />
+              <Text style={styles.sosText}>SOS</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* AI Companion Button - hide during preview */}
+          {!isPreviewingRoute && (
+            <TouchableOpacity
               style={[
-                styles.companionText,
-                isAICompanionActive && styles.companionTextActive,
+                styles.companionButton,
+                isAICompanionActive && styles.companionButtonActive,
               ]}
+              onPress={toggleAICompanion}
             >
-              {isAICompanionActive ? "AI On" : "AI Off"}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={isAICompanionActive ? "mic" : "mic-off"}
+                size={24}
+                color={isAICompanionActive ? COLORS.white : COLORS.mutedTeal}
+              />
+              <Text
+                style={[
+                  styles.companionText,
+                  isAICompanionActive && styles.companionTextActive,
+                ]}
+              >
+                {isAICompanionActive ? "AI On" : "AI Off"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Zoom Controls - show when route is selected and not navigating */}
+          {selectedRoute && !isNavigating && (
+            <View style={styles.zoomControls}>
+              <TouchableOpacity
+                style={styles.zoomButton}
+                onPress={handleZoomIn}
+              >
+                <Ionicons name="add" size={20} color={COLORS.mutedTeal} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.zoomButton}
+                onPress={handleZoomOut}
+              >
+                <Ionicons name="remove" size={20} color={COLORS.mutedTeal} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Center Location Button - only show during navigation */}
           {isNavigating && (
@@ -1973,8 +2295,9 @@ export default function HomeScreen() {
                   <View style={styles.navigationText}>
                     <Text style={styles.navigationTitle}>{destination}</Text>
                     <Text style={styles.navigationSubtitle}>
-                      {estimatedArrival &&
-                        `ETA: ${estimatedArrival.toLocaleTimeString()}`}
+                      {estimatedArrival
+                        ? `ETA: ${estimatedArrival.toLocaleTimeString()}`
+                        : ""}
                     </Text>
                   </View>
                 </View>
@@ -2029,8 +2352,8 @@ export default function HomeScreen() {
           </ScrollView>
         )}
 
-        {/* Bottom Panel */}
-        {routes.length > 0 && !isNavigating && (
+        {/* Bottom Panel - hide during preview */}
+        {routes.length > 0 && !isNavigating && !isPreviewingRoute && (
           <ScrollView
             style={styles.bottomScrollContainer}
             contentContainerStyle={styles.bottomScrollContent}
@@ -2038,19 +2361,6 @@ export default function HomeScreen() {
             bounces={true}
           >
             <View style={styles.bottomPanel}>
-              <View style={styles.panelHeader}>
-                <Text style={styles.routeTitle}>
-                  {routeFilterMode === "all"
-                    ? `All Walking Routes to ${destination} (${routes.length}) - Balanced`
-                    : routeFilterMode === "fastest"
-                    ? `Fastest Walking Routes to ${destination} (${routes.length}) - Speed Priority`
-                    : `Safest Walking Routes to ${destination} (${routes.length}) - Safety Priority`}
-                </Text>
-                {isLoadingRoutes && (
-                  <ActivityIndicator size="small" color={COLORS.mutedTeal} />
-                )}
-              </View>
-
               {/* Route Filter Options in Bottom Panel */}
               <View style={styles.routeFilterInPanel}>
                 <ScrollView
@@ -2198,8 +2508,7 @@ export default function HomeScreen() {
                       Route {index + 1}
                       {index === 0 && (
                         <Text style={styles.bestRouteIndicator}>
-                          {" "}
-                          • Best for{" "}
+                          {" • Best for "}
                           {routeFilterMode === "safe"
                             ? "Safety"
                             : routeFilterMode === "fastest"
@@ -2229,15 +2538,25 @@ export default function HomeScreen() {
               </ScrollView>
 
               {selectedRoute && (
-                <TouchableOpacity
-                  style={styles.startNavigationButton}
-                  onPress={handleStartNavigation}
-                >
-                  <Ionicons name="navigate" size={20} color={COLORS.white} />
-                  <Text style={styles.startNavigationText}>
-                    Start Navigation
-                  </Text>
-                </TouchableOpacity>
+                <View style={styles.navigationButtonsContainer}>
+                  <TouchableOpacity
+                    style={styles.previewRouteButton}
+                    onPress={handlePreviewRoute}
+                  >
+                    <Ionicons name="eye" size={20} color={COLORS.deepNavy} />
+                    <Text style={styles.previewRouteText}>Preview Route</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.startNavigationButton}
+                    onPress={handleStartNavigation}
+                  >
+                    <Ionicons name="navigate" size={20} color={COLORS.white} />
+                    <Text style={styles.startNavigationText}>
+                      Start Navigation
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </ScrollView>
@@ -2358,6 +2677,23 @@ const styles = StyleSheet.create({
     color: COLORS.slateGray,
     marginTop: 2,
   },
+  // Distance limit info styles
+  distanceLimitInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.warmBeige,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.mutedTeal,
+  },
+  distanceLimitText: {
+    flex: 1,
+    marginLeft: SPACING.sm,
+    fontSize: FONTS.sizes.small,
+    color: COLORS.deepNavy,
+    fontStyle: "italic",
+  },
   // Route Filter Styles
   routeFilterInPanel: {
     paddingVertical: SPACING.sm,
@@ -2425,7 +2761,7 @@ const styles = StyleSheet.create({
   },
   sosButton: {
     position: "absolute",
-    top: SPACING.xl * 3, // Moved lower from the top
+    top: SPACING.xl * 4, // Moved lower from the top
     right: SPACING.md,
     backgroundColor: COLORS.warningRed,
     width: 70,
@@ -2433,7 +2769,6 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 1000,
     ...SHADOWS.heavy,
   },
   sosText: {
@@ -2444,7 +2779,7 @@ const styles = StyleSheet.create({
   },
   companionButton: {
     position: "absolute",
-    top: SPACING.xl * 3 + 80, // Position below SOS button (70px height + 10px spacing)
+    top: SPACING.xl * 4 + 80, // Position below SOS button (70px height + 10px spacing)
     right: SPACING.md,
     backgroundColor: COLORS.warmBeige,
     borderWidth: 2,
@@ -2649,19 +2984,80 @@ const styles = StyleSheet.create({
     minWidth: 35,
   },
   startNavigationButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.mutedTeal,
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
-    marginTop: SPACING.md,
   },
   startNavigationText: {
     color: COLORS.white,
     fontSize: FONTS.sizes.medium,
     fontWeight: FONTS.weights.semibold,
     marginLeft: SPACING.sm,
+  },
+  // Route Preview Styles
+  navigationButtonsContainer: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  previewRouteButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.warmBeige,
+    borderWidth: 1,
+    borderColor: COLORS.mutedTeal,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    ...SHADOWS.light,
+  },
+  previewRouteText: {
+    color: COLORS.deepNavy,
+    fontSize: FONTS.sizes.medium,
+    fontWeight: FONTS.weights.semibold,
+    marginLeft: SPACING.sm,
+  },
+  routePreviewOverlay: {
+    position: "absolute",
+    top: SPACING.xl * 4, // Position below search bar (search bar is at SPACING.xxl + height)
+    left: SPACING.md,
+    right: SPACING.md,
+    backgroundColor: COLORS.deepNavy,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    ...SHADOWS.heavy,
+    zIndex: 999, // Lower than search container but above map
+  },
+  previewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.sm,
+  },
+  previewTitle: {
+    fontSize: FONTS.sizes.large,
+    fontWeight: FONTS.weights.bold,
+    color: COLORS.white,
+  },
+  exitPreviewButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.slateGray,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewInfo: {
+    alignItems: "center",
+  },
+  previewSafetyText: {
+    fontSize: FONTS.sizes.small,
+    color: COLORS.warmBeige,
   },
   navigationPanel: {
     backgroundColor: COLORS.white,
@@ -2749,5 +3145,24 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.small,
     color: COLORS.slateGray,
     fontWeight: FONTS.weights.medium,
+  },
+  // Zoom Controls
+  zoomControls: {
+    position: "absolute",
+    bottom: "45%", // Position above center location button
+    left: SPACING.md,
+    flexDirection: "column",
+    gap: SPACING.xs,
+  },
+  zoomButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.mutedTeal,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: "center",
+    alignItems: "center",
+    ...SHADOWS.medium,
   },
 });
