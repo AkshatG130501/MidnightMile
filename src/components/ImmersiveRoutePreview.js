@@ -22,7 +22,7 @@ import { GoogleMapsService } from "../services/GoogleMapsService";
 
 const { width, height } = Dimensions.get("window");
 
-export default function ImmersiveRoutePreview({
+function ImmersiveRoutePreview({
   visible,
   route,
   startLocation,
@@ -45,6 +45,25 @@ export default function ImmersiveRoutePreview({
   const panY = useRef(new Animated.Value(0)).current;
   const transitionTimeoutRef = useRef(null);
 
+  // Development logging to understand re-renders
+  useEffect(() => {
+    if (__DEV__) {
+      console.log("[ImmersiveRoutePreview] Component rendered with props:", {
+        visible,
+        hasRoute: !!route,
+        hasStartLocation: !!startLocation,
+        hasEndLocation: !!endLocation,
+        safeSpots: safeSpots?.length || 0,
+      });
+
+      if (!visible && !route) {
+        console.log(
+          "[ImmersiveRoutePreview] Early return - not visible and no route"
+        );
+      }
+    }
+  });
+
   // Initialize checkpoints from route
   useEffect(() => {
     if (route && startLocation && endLocation) {
@@ -57,7 +76,7 @@ export default function ImmersiveRoutePreview({
       // Set initial region with better bounds
       const bounds = calculateRouteBounds(routeCoordinates);
       setMapRegion(bounds);
-      
+
       // Initial camera setup with delay to ensure map is ready
       setTimeout(() => {
         if (mapRef.current && checkpoints.length > 0) {
@@ -95,13 +114,13 @@ export default function ImmersiveRoutePreview({
       if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
       }
-      
+
       // Debounce the transition to prevent jittery movement
       transitionTimeoutRef.current = setTimeout(() => {
         animateToCheckpoint(currentCheckpoint, true);
       }, 100);
     }
-    
+
     return () => {
       if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
@@ -194,15 +213,18 @@ export default function ImmersiveRoutePreview({
         heading: heading,
         zoom: streetViewMode ? 19 : 17, // Higher zoom for better detail
       },
-      { 
+      {
         duration: withTransition ? 2500 : 1000, // Longer duration for smoother animation
       }
     );
 
     // Mark transition as complete
-    setTimeout(() => {
-      setIsTransitioning(false);
-    }, withTransition ? 2500 : 1000);
+    setTimeout(
+      () => {
+        setIsTransitioning(false);
+      },
+      withTransition ? 2500 : 1000
+    );
   };
 
   const generateCheckpointInstruction = (index, routeCoordinates) => {
@@ -301,6 +323,7 @@ export default function ImmersiveRoutePreview({
     };
   }, []);
 
+  // Early return with minimal logging in development
   if (!visible || !route || !checkpoints.length) {
     return null;
   }
@@ -462,10 +485,12 @@ export default function ImmersiveRoutePreview({
             <Animated.View
               style={[
                 styles.progressFill,
-                { 
+                {
                   width: `${currentProgress}%`,
-                  backgroundColor: isTransitioning ? COLORS.safetyAmber : COLORS.mutedTeal
-                }
+                  backgroundColor: isTransitioning
+                    ? COLORS.safetyAmber
+                    : COLORS.mutedTeal,
+                },
               ]}
             />
           </View>
@@ -489,7 +514,8 @@ export default function ImmersiveRoutePreview({
             <TouchableOpacity
               style={[
                 styles.controlButton,
-                (currentCheckpoint === 0 || isTransitioning) && styles.disabledButton,
+                (currentCheckpoint === 0 || isTransitioning) &&
+                  styles.disabledButton,
               ]}
               onPress={handlePrevCheckpoint}
               disabled={currentCheckpoint === 0 || isTransitioning}
@@ -500,7 +526,7 @@ export default function ImmersiveRoutePreview({
             <TouchableOpacity
               style={[
                 styles.playButton,
-                isTransitioning && styles.disabledButton
+                isTransitioning && styles.disabledButton,
               ]}
               onPress={toggleAutoPlay}
               disabled={isTransitioning}
@@ -515,11 +541,14 @@ export default function ImmersiveRoutePreview({
             <TouchableOpacity
               style={[
                 styles.controlButton,
-                (currentCheckpoint === checkpoints.length - 1 || isTransitioning) &&
+                (currentCheckpoint === checkpoints.length - 1 ||
+                  isTransitioning) &&
                   styles.disabledButton,
               ]}
               onPress={handleNextCheckpoint}
-              disabled={currentCheckpoint === checkpoints.length - 1 || isTransitioning}
+              disabled={
+                currentCheckpoint === checkpoints.length - 1 || isTransitioning
+              }
             >
               <Ionicons
                 name="chevron-forward"
@@ -764,3 +793,19 @@ const styles = StyleSheet.create({
     borderColor: COLORS.white,
   },
 });
+
+// Custom comparison function for React.memo
+const areEqual = (prevProps, nextProps) => {
+  // Only re-render if these specific props change
+  return (
+    prevProps.visible === nextProps.visible &&
+    prevProps.route === nextProps.route &&
+    prevProps.startLocation === nextProps.startLocation &&
+    prevProps.endLocation === nextProps.endLocation &&
+    prevProps.safeSpots?.length === nextProps.safeSpots?.length &&
+    prevProps.onClose === nextProps.onClose &&
+    prevProps.onStartNavigation === nextProps.onStartNavigation
+  );
+};
+
+export default React.memo(ImmersiveRoutePreview, areEqual);
