@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
@@ -1629,6 +1635,26 @@ export default function HomeScreen() {
     }
   };
 
+  // Memoized values to prevent unnecessary re-renders
+  const memoizedStartLocation = useMemo(() => {
+    return location
+      ? {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        }
+      : null;
+  }, [location?.coords.latitude, location?.coords.longitude]);
+
+  // Memoized callbacks to prevent unnecessary re-renders
+  const handleImmersivePreviewClose = useCallback(() => {
+    setShowImmersivePreview(false);
+  }, []);
+
+  const handleImmersivePreviewStartNavigation = useCallback(() => {
+    setShowImmersivePreview(false);
+    handleStartNavigation();
+  }, []);
+
   return (
     <>
       <TouchableWithoutFeedback onPress={handleOutsidePress}>
@@ -2538,21 +2564,11 @@ export default function HomeScreen() {
       <ImmersiveRoutePreview
         visible={showImmersivePreview}
         route={selectedRoute}
-        startLocation={
-          location
-            ? {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-              }
-            : null
-        }
+        startLocation={memoizedStartLocation}
         endLocation={destinationCoords}
         safeSpots={safeSpots}
-        onClose={() => setShowImmersivePreview(false)}
-        onStartNavigation={() => {
-          setShowImmersivePreview(false);
-          handleStartNavigation();
-        }}
+        onClose={handleImmersivePreviewClose}
+        onStartNavigation={handleImmersivePreviewStartNavigation}
       />
     </>
   );
