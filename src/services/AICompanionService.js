@@ -189,7 +189,15 @@ export class AICompanionService {
       }
     }
 
-    console.log("🧠 AI Context updated:", this.context);
+    // Only log context updates during navigation or significant changes
+    if (newContext.isNavigating || !wasNavigating !== !newContext.isNavigating) {
+      console.log("🧠 AI Context updated:", {
+        isNavigating: this.context.isNavigating,
+        hasRoute: !!this.context.selectedRoute,
+        locationChanged: !!newContext.currentLocation,
+        nearbySpots: this.context.nearbySpots?.length || 0
+      });
+    }
 
     // Start proactive conversations if listening
     if (this.isListening) {

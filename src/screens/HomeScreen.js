@@ -533,8 +533,8 @@ export default function HomeScreen() {
       const watcher = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 1000, // Update every second
-          distanceInterval: 5, // Update every 5 meters
+          timeInterval: 3000, // Update every 3 seconds (reduced from 1 second)
+          distanceInterval: 10, // Update every 10 meters (increased from 5 meters)
         },
         (location) => {
           setLiveLocation(location);
@@ -2065,7 +2065,7 @@ export default function HomeScreen() {
                         </View>
                         {autocompleteSuggestions.map((suggestion, index) => (
                           <TouchableOpacity
-                            key={`auto-${index}`}
+                            key={`auto-${suggestion.place_id || index}`}
                             style={styles.suggestionItem}
                             activeOpacity={0.7}
                             onPressIn={() => {
@@ -2738,12 +2738,7 @@ export default function HomeScreen() {
                 >
                   {routes.map((route, index) => (
                     <TouchableOpacity
-                      key={`route-${
-                        route.id ||
-                        `${index}-${route.safetyLevel || "unknown"}-${
-                          route.distance || "unknown"
-                        }`
-                      }`}
+                      key={`route-${index}-${route.id || 'undefined'}`}
                       style={[
                         styles.routeOption,
                         selectedRoute?.id === route.id &&

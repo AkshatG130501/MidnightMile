@@ -50,7 +50,7 @@ export class GoogleMapsService {
         const safetyScore = this.calculateSafetyScore(route);
         return {
           ...route,
-          id: index,
+          id: `safe_route_${index}`,
           safetyScore,
           safetyLevel: this.getSafetyLevel(safetyScore),
           estimatedTime: route.legs[0].duration.text,
@@ -140,7 +140,7 @@ export class GoogleMapsService {
           const safetyScore = this.calculateSafetyScore(route);
           return {
             ...route,
-            id: `walking_${index}`,
+            id: `fallback_walking_${index}`,
             mode: "walking",
             safetyScore,
             safetyLevel: this.getSafetyLevel(safetyScore),
