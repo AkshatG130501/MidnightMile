@@ -37,7 +37,6 @@ import { AICompanionService } from "../services/AICompanionService";
 import { UserProfileMenu } from "../components/UserProfileMenu";
 import ImmersiveRoutePreview from "../components/ImmersiveRoutePreview";
 import AICompanionInterface from "../components/AICompanionInterface";
-import SimpleAudioRecorder from "../components/SimpleAudioRecorder";
 
 // Configuration constants
 const MAX_DESTINATION_DISTANCE_MILES = 10;
@@ -2264,17 +2263,6 @@ export default function HomeScreen() {
               />
             )}
 
-            {/* Simple Audio Recorder - hide during preview */}
-            {!isPreviewingRoute && (
-              <View style={styles.audioRecorderContainer}>
-                <SimpleAudioRecorder
-                  style={styles.simpleAudioRecorder}
-                  currentLocation={location}
-                  selectedRoute={selectedRoute}
-                />
-              </View>
-            )}
-
             {/* Zoom Controls - show when route is selected and not navigating */}
             {selectedRoute && !isNavigating && (
               <View style={styles.zoomControls}>
@@ -2857,17 +2845,6 @@ const styles = StyleSheet.create({
   },
   companionTextActive: {
     color: COLORS.white,
-  },
-  audioRecorderContainer: {
-    position: "absolute",
-    top: SPACING.xl * 4 + 160, // Position below AI companion button (70px + spacing + 70px + spacing)
-    right: SPACING.md,
-  },
-  simpleAudioRecorder: {
-    padding: 0, // Override default padding since we want compact layout
-    backgroundColor: "transparent", // Make background transparent
-    shadowOpacity: 0, // Remove shadow
-    elevation: 0, // Remove elevation
   },
   centerLocationButton: {
     position: "absolute",

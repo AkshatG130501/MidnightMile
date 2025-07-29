@@ -18,12 +18,10 @@ export default function SimpleAudioRecorder({ style, currentLocation, selectedRo
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedURI, setRecordedURI] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAISpeaking, setIsAISpeaking] = useState(false);
 
-  const soundRef = useRef(null);
   const spinValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -31,9 +29,6 @@ export default function SimpleAudioRecorder({ style, currentLocation, selectedRo
     initializeServices();
     return () => {
       // Cleanup on unmount
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-      }
       if (recording) {
         recording.stopAndUnloadAsync();
       }
@@ -231,43 +226,6 @@ export default function SimpleAudioRecorder({ style, currentLocation, selectedRo
     }
   };
 
-  const playRecording = async () => {
-    if (!recordedURI) {
-      Alert.alert("No Recording", "Please record audio first.");
-      return;
-    }
-
-    try {
-      // If already playing, stop first
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-
-      // Create and play new sound
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: recordedURI },
-        { shouldPlay: true }
-      );
-
-      soundRef.current = sound;
-      setIsPlaying(true);
-
-      // Set up playback status listener
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setIsPlaying(false);
-          sound.unloadAsync();
-          soundRef.current = null;
-        }
-      });
-    } catch (error) {
-      console.error("Failed to play recording:", error);
-      Alert.alert("Playback Error", "Failed to play the recording.");
-      setIsPlaying(false);
-    }
-  };
-
   return (
     <View style={[styles.container, style]}>
       {/* Microphone Button */}
@@ -279,7 +237,7 @@ export default function SimpleAudioRecorder({ style, currentLocation, selectedRo
           isAISpeaking && styles.micButtonSpeaking,
         ]}
         onPress={toggleRecording}
-        disabled={isPlaying || isProcessing || isAISpeaking}
+        disabled={isProcessing || isAISpeaking}
       >
         <Animated.View
           style={[
@@ -312,39 +270,14 @@ export default function SimpleAudioRecorder({ style, currentLocation, selectedRo
           />
         </Animated.View>
       </TouchableOpacity>
-
-      {/* Play Button */}
-      <TouchableOpacity
-        style={[
-          styles.playButton,
-          !recordedURI && styles.playButtonDisabled,
-          isPlaying && styles.playButtonPlaying,
-        ]}
-        onPress={playRecording}
-        disabled={isRecording || !recordedURI}
-      >
-        <Ionicons
-          name={isPlaying ? "pause" : "play"}
-          size={18}
-          color={
-            !recordedURI
-              ? COLORS.slateGray
-              : isPlaying
-              ? COLORS.white
-              : COLORS.deepNavy
-          }
-        />
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
     padding: 0,
   },
   micButton: {
@@ -376,28 +309,5 @@ const styles = StyleSheet.create({
   micButtonSpeaking: {
     backgroundColor: COLORS.mutedTeal,
     borderColor: COLORS.mutedTeal,
-  },
-  playButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.mutedTeal,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.deepNavy,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  playButtonDisabled: {
-    backgroundColor: COLORS.warmBeige,
-    opacity: 0.5,
-  },
-  playButtonPlaying: {
-    backgroundColor: COLORS.safetyAmber,
   },
 });
