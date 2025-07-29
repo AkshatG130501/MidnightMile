@@ -2738,7 +2738,7 @@ export default function HomeScreen() {
                 >
                   {routes.map((route, index) => (
                     <TouchableOpacity
-                      key={`route-${index}-${route.id || 'undefined'}`}
+                      key={`route-${index}-${route.id || "undefined"}`}
                       style={[
                         styles.routeOption,
                         selectedRoute?.id === route.id &&
