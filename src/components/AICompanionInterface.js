@@ -5,7 +5,13 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { Text, TouchableOpacity, StyleSheet, Alert, Animated } from "react-native";
+import {
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Animated,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import {
@@ -66,10 +72,10 @@ export default function AICompanionInterface({
     try {
       // Initialize STT service
       SpeechToTextService.initialize();
-      
+
       // Initialize AI service
       IntelligentAIService.initialize();
-      
+
       console.log("✅ All AI services initialized for AICompanionInterface");
     } catch (error) {
       console.error("❌ Failed to initialize AI services:", error);
@@ -110,24 +116,39 @@ export default function AICompanionInterface({
     // Only update if there are significant changes
     const hasSignificantLocationChange = (() => {
       if (!currentLocation?.coords) return false;
-      
+
       const lastContext = AICompanionService.context;
       if (!lastContext.currentLocation?.coords) return true;
-      
+
       // Calculate distance between old and new location
-      const latDiff = Math.abs(currentLocation.coords.latitude - lastContext.currentLocation.coords.latitude);
-      const lonDiff = Math.abs(currentLocation.coords.longitude - lastContext.currentLocation.coords.longitude);
-      
+      const latDiff = Math.abs(
+        currentLocation.coords.latitude -
+          lastContext.currentLocation.coords.latitude
+      );
+      const lonDiff = Math.abs(
+        currentLocation.coords.longitude -
+          lastContext.currentLocation.coords.longitude
+      );
+
       // Only update if moved more than ~10 meters (0.0001 degrees ≈ 11 meters)
       return latDiff > 0.0001 || lonDiff > 0.0001;
     })();
 
-    const hasNavigationStateChange = isNavigating !== AICompanionService.context.isNavigating;
-    const hasRouteChange = selectedRoute?.id !== AICompanionService.context.selectedRoute?.id;
-    const hasNextTurnChange = nextTurn?.instruction !== AICompanionService.context.nextTurn?.instruction;
-    
+    const hasNavigationStateChange =
+      isNavigating !== AICompanionService.context.isNavigating;
+    const hasRouteChange =
+      selectedRoute?.id !== AICompanionService.context.selectedRoute?.id;
+    const hasNextTurnChange =
+      nextTurn?.instruction !==
+      AICompanionService.context.nextTurn?.instruction;
+
     // Only update if there are significant changes
-    if (hasSignificantLocationChange || hasNavigationStateChange || hasRouteChange || hasNextTurnChange) {
+    if (
+      hasSignificantLocationChange ||
+      hasNavigationStateChange ||
+      hasRouteChange ||
+      hasNextTurnChange
+    ) {
       // Debounce context updates to prevent spam
       const timeoutId = setTimeout(updateContext, 300);
       return () => clearTimeout(timeoutId);
@@ -275,9 +296,12 @@ export default function AICompanionInterface({
       // Step 1: Convert speech to text
       console.log("🔄 Step 1: Converting speech to text...");
       const transcribedText = await SpeechToTextService.transcribeAudio(uri);
-      
+
       if (!transcribedText) {
-        Alert.alert("Speech Recognition", "Sorry, I couldn't understand what you said. Please try speaking more clearly.");
+        Alert.alert(
+          "Speech Recognition",
+          "Sorry, I couldn't understand what you said. Please try speaking more clearly."
+        );
         setIsProcessing(false);
         // Resume AI speech if STT failed
         AICompanionService.resumeAISpeechAfterRecording();
@@ -293,13 +317,24 @@ export default function AICompanionInterface({
         selectedRoute,
         userInput: transcribedText,
         isNavigating,
-        timeOfDay: new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"
+        timeOfDay:
+          new Date().getHours() < 12
+            ? "morning"
+            : new Date().getHours() < 18
+            ? "afternoon"
+            : "evening",
       };
 
-      const aiResponse = await IntelligentAIService.generateResponse(transcribedText, contextualInfo);
-      
+      const aiResponse = await IntelligentAIService.generateResponse(
+        transcribedText,
+        contextualInfo
+      );
+
       if (!aiResponse) {
-        Alert.alert("AI Error", "Sorry, I'm having trouble processing your request right now.");
+        Alert.alert(
+          "AI Error",
+          "Sorry, I'm having trouble processing your request right now."
+        );
         setIsProcessing(false);
         // Resume AI speech if AI generation failed
         AICompanionService.resumeAISpeechAfterRecording();
@@ -315,24 +350,29 @@ export default function AICompanionInterface({
 
       // Use AICompanionService for consistent speech management
       const speechSuccess = await AICompanionService.speak(aiResponse, {
-        priority: 'recording-response' // This will bypass the pause check
+        priority: "recording-response", // This will bypass the pause check
       });
 
       if (!speechSuccess) {
-        Alert.alert("Speech Error", "Generated response but couldn't convert to speech.");
+        Alert.alert(
+          "Speech Error",
+          "Generated response but couldn't convert to speech."
+        );
       }
 
       setIsAISpeaking(false);
       setLastInteractionTime(Date.now());
-      
+
       // Resume AI speech after the response is complete
       AICompanionService.resumeAISpeechAfterRecording();
-      
-      console.log("✅ STT → AI → TTS pipeline completed successfully!");
 
+      console.log("✅ STT → AI → TTS pipeline completed successfully!");
     } catch (error) {
       console.error("Failed to process audio:", error);
-      Alert.alert("Processing Error", "Failed to process your audio. Please try again.");
+      Alert.alert(
+        "Processing Error",
+        "Failed to process your audio. Please try again."
+      );
       setIsProcessing(false);
       setIsAISpeaking(false);
       // Resume AI speech if processing failed
@@ -354,7 +394,7 @@ export default function AICompanionInterface({
   return (
     <TouchableOpacity
       style={[
-        styles.companionButton, 
+        styles.companionButton,
         isActive && styles.companionButtonActive,
         isRecording && styles.companionButtonRecording,
         isProcessing && styles.companionButtonProcessing,
@@ -367,43 +407,49 @@ export default function AICompanionInterface({
       <Animated.View
         style={[
           isProcessing && {
-            transform: [{
-              rotate: spinValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0deg', '360deg'],
-              }),
-            }],
+            transform: [
+              {
+                rotate: spinValue.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "360deg"],
+                }),
+              },
+            ],
           },
         ]}
       >
         <Ionicons
           name={
-            isProcessing 
-              ? "sync" 
-              : isAISpeaking 
-                ? "volume-high" 
-                : isRecording 
-                  ? "stop" 
-                  : isActive 
-                    ? "mic" 
-                    : "mic-off"
+            isProcessing
+              ? "sync"
+              : isAISpeaking
+              ? "volume-high"
+              : isRecording
+              ? "stop"
+              : isActive
+              ? "mic"
+              : "mic-off"
           }
           size={24}
-          color={isActive || isRecording || isProcessing || isAISpeaking ? COLORS.white : COLORS.mutedTeal}
+          color={
+            isActive || isRecording || isProcessing || isAISpeaking
+              ? COLORS.white
+              : COLORS.mutedTeal
+          }
         />
       </Animated.View>
       <Text
         style={[styles.companionText, isActive && styles.companionTextActive]}
       >
-        {isProcessing 
-          ? "Processing" 
-          : isAISpeaking 
-            ? "Speaking" 
-            : isRecording 
-              ? "Recording" 
-              : isActive 
-                ? "AI On" 
-                : "AI Off"}
+        {isProcessing
+          ? "Processing"
+          : isAISpeaking
+          ? "Speaking"
+          : isRecording
+          ? "Recording"
+          : isActive
+          ? "AI On"
+          : "AI Off"}
       </Text>
     </TouchableOpacity>
   );
