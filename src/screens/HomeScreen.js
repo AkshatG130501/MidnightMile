@@ -33,8 +33,10 @@ import {
 } from "../constants/theme";
 import { GoogleMapsService } from "../services/GoogleMapsService";
 import { GoogleMapsTestUtils } from "../services/GoogleMapsTestUtils";
+import { AICompanionService } from "../services/AICompanionService";
 import { UserProfileMenu } from "../components/UserProfileMenu";
 import ImmersiveRoutePreview from "../components/ImmersiveRoutePreview";
+import AICompanionInterface from "../components/AICompanionInterface";
 
 // Configuration constants
 const MAX_DESTINATION_DISTANCE_MILES = 10;
@@ -455,6 +457,23 @@ export default function HomeScreen() {
     return () => clearInterval(themeInterval);
   }, []);
 
+  // AI Companion periodic safety checks
+  useEffect(() => {
+    if (isAICompanionActive) {
+      // Initial safety check when AI is activated
+      setTimeout(() => {
+        AICompanionService.checkSafetyStatus();
+      }, 3000); // Wait 3 seconds after activation
+
+      // Periodic safety checks every 10 minutes
+      const safetyInterval = setInterval(() => {
+        AICompanionService.checkSafetyStatus();
+      }, 10 * 60 * 1000); // 10 minutes
+
+      return () => clearInterval(safetyInterval);
+    }
+  }, [isAICompanionActive]);
+
   // Cleanup blur timeout on unmount
   useEffect(() => {
     return () => {
@@ -615,7 +634,21 @@ export default function HomeScreen() {
     // Calculate overall route progress
     const totalSteps = steps.length;
     const progress = ((currentStepIndex + 1) / totalSteps) * 100;
+    const previousProgress = routeProgress;
     setRouteProgress(progress);
+
+    // AI Companion: Provide proactive navigation updates
+    if (isAICompanionActive && Math.floor(progress / 25) > Math.floor(previousProgress / 25)) {
+      AICompanionService.provideNavigationUpdate();
+    }
+
+    // AI Companion: Check for upcoming turns
+    if (isAICompanionActive && distance <= 100) {
+      const nextTurnData = getNextTurnData();
+      if (nextTurnData) {
+        AICompanionService.provideUpcomingTurnAlert(nextTurnData);
+      }
+    }
 
     // Navigation progress updated
   };
@@ -959,14 +992,22 @@ export default function HomeScreen() {
 
   const toggleAICompanion = () => {
     setIsAICompanionActive(!isAICompanionActive);
-    Alert.alert(
-      isAICompanionActive
-        ? "AI Companion Deactivated"
-        : "AI Companion Activated",
-      isAICompanionActive
-        ? "Your AI companion is now offline."
-        : "Your AI companion is now listening and ready to help."
-    );
+  };
+
+  // Get formatted next turn data for AI companion
+  const getNextTurnData = () => {
+    const currentStep = getCurrentStep();
+    if (!currentStep) return null;
+
+    return {
+      instruction: currentStep.html_instructions.replace(/<[^>]*>/g, ""),
+      distance: distanceToNextStep > 0 
+        ? distanceToNextStep < 1000 
+          ? `${Math.round(distanceToNextStep)}m`
+          : `${(distanceToNextStep / 1000).toFixed(1)}km`
+        : "nearby",
+      maneuver: currentStep.maneuver || "continue"
+    };
   };
 
   const handleSOS = () => {
@@ -2446,29 +2487,18 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
 
-            {/* AI Companion Button - hide during preview */}
+            {/* AI Companion Interface - hide during preview */}
             {!isPreviewingRoute && (
-              <TouchableOpacity
-                style={[
-                  styles.companionButton,
-                  isAICompanionActive && styles.companionButtonActive,
-                ]}
-                onPress={toggleAICompanion}
-              >
-                <Ionicons
-                  name={isAICompanionActive ? "mic" : "mic-off"}
-                  size={24}
-                  color={isAICompanionActive ? COLORS.white : COLORS.mutedTeal}
-                />
-                <Text
-                  style={[
-                    styles.companionText,
-                    isAICompanionActive && styles.companionTextActive,
-                  ]}
-                >
-                  {isAICompanionActive ? "AI On" : "AI Off"}
-                </Text>
-              </TouchableOpacity>
+              <AICompanionInterface
+                isActive={isAICompanionActive}
+                onToggle={toggleAICompanion}
+                currentLocation={location}
+                selectedRoute={selectedRoute}
+                nextTurn={getNextTurnData()}
+                routeProgress={routeProgress}
+                isNavigating={isNavigating}
+                nearbySpots={safeSpots}
+              />
             )}
 
             {/* Zoom Controls - show when route is selected and not navigating */}
