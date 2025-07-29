@@ -70,10 +70,17 @@ export class AICompanionService {
       // Initialize Eleven Labs TTS if API key is available
       if (ELEVEN_LABS_CONFIG.isConfigured()) {
         try {
-          const apiKey = ELEVEN_LABS_CONFIG.getApiKey();
-          const ttsInitialized = ElevenLabsTTSService.initialize(apiKey);
+          const ttsInitialized = ElevenLabsTTSService.initializeFromConfig();
           if (ttsInitialized) {
             console.log("✅ Eleven Labs TTS initialized successfully");
+            
+            // Test the connection to verify the API key works
+            const connectionTest = await ElevenLabsTTSService.testConnection();
+            if (connectionTest) {
+              console.log("✅ Eleven Labs API connection verified");
+            } else {
+              console.log("⚠️ Eleven Labs API connection test failed");
+            }
           } else {
             console.log("⚠️ Eleven Labs TTS initialization failed, but continuing...");
           }
@@ -294,10 +301,17 @@ export class AICompanionService {
     try {
       console.log("🤖 Initializing AI Companion with Eleven Labs...");
 
-      // Initialize Eleven Labs TTS
-      const ttsInitialized = ElevenLabsTTSService.initialize(apiKey);
+      // Initialize Eleven Labs TTS using the config method
+      const ttsInitialized = ElevenLabsTTSService.initializeFromConfig();
       if (!ttsInitialized) {
         console.error("❌ Failed to initialize Eleven Labs TTS");
+        return false;
+      }
+
+      // Test the API connection
+      const connectionTest = await ElevenLabsTTSService.testConnection();
+      if (!connectionTest) {
+        console.error("❌ Eleven Labs API connection test failed");
         return false;
       }
 

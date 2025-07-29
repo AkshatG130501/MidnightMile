@@ -6,11 +6,11 @@
 import Constants from "expo-constants";
 
 export const ELEVEN_LABS_CONFIG = {
-  // Get API key from app.json extra section (primary source)
-  apiKey: process.env.ELEVEN_LABS_API_KEY,
+  // Get API key from expo config extra section (primary source)
+  apiKey: Constants.expoConfig?.extra?.ELEVEN_LABS_API_KEY,
 
   // Default voice ID from config or fallback to Bella
-  defaultVoiceId: process.env.ELEVEN_LABS_VOICE_ID,
+  defaultVoiceId: Constants.expoConfig?.extra?.ELEVEN_LABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB", // Bella voice as fallback
 
   // Base URL for Eleven Labs API
   baseURL: "https://api.elevenlabs.io/v1",
@@ -20,19 +20,30 @@ export const ELEVEN_LABS_CONFIG = {
 
   // Check if API key is configured and valid
   isConfigured: () => {
-    const apiKey = process.env.ELEVEN_LABS_API_KEY;
-    return (
+    const apiKey = Constants.expoConfig?.extra?.ELEVEN_LABS_API_KEY;
+    const isValid = (
       apiKey &&
       apiKey !== "your_api_key_here" &&
       apiKey !== "YOUR_ELEVEN_LABS_API_KEY_HERE" &&
       apiKey !== "${ELEVEN_LABS_API_KEY}" && // Check for unsubstituted template
-      apiKey.length > 10
+      apiKey.length > 10 &&
+      apiKey.startsWith('sk_') // ElevenLabs API keys should start with 'sk_'
     );
+    
+    if (!isValid) {
+      console.log("⚠️ ElevenLabs API key validation failed:");
+      console.log("- Has key:", !!apiKey);
+      console.log("- Key length:", apiKey?.length || 0);
+      console.log("- Starts with 'sk_':", apiKey?.startsWith('sk_'));
+      console.log("- Not placeholder:", apiKey !== "your_api_key_here");
+    }
+    
+    return isValid;
   },
 
   // Get API key with validation
   getApiKey: () => {
-    const apiKey = process.env.ELEVEN_LABS_API_KEY;
+    const apiKey = Constants.expoConfig?.extra?.ELEVEN_LABS_API_KEY;
     if (
       !apiKey ||
       apiKey === "your_api_key_here" ||
@@ -40,10 +51,30 @@ export const ELEVEN_LABS_CONFIG = {
       apiKey === "${ELEVEN_LABS_API_KEY}"
     ) {
       throw new Error(
-        "Eleven Labs API key not configured properly in app.json extra section."
+        "Eleven Labs API key not configured properly in app.config.js extra section."
       );
     }
     return apiKey;
+  },
+
+  // Debug function to check configuration
+  debugConfig: () => {
+    const apiKey = Constants.expoConfig?.extra?.ELEVEN_LABS_API_KEY;
+    const voiceId = Constants.expoConfig?.extra?.ELEVEN_LABS_VOICE_ID;
+    
+    console.log("🔍 ElevenLabs Config Debug:");
+    console.log("- API Key exists:", !!apiKey);
+    console.log("- API Key length:", apiKey?.length || 0);
+    console.log("- API Key starts with 'sk_':", apiKey?.startsWith('sk_'));
+    console.log("- Voice ID:", voiceId);
+    console.log("- Full extra config:", Constants.expoConfig?.extra);
+    
+    return {
+      hasApiKey: !!apiKey,
+      keyLength: apiKey?.length || 0,
+      isValidFormat: apiKey?.startsWith('sk_'),
+      voiceId: voiceId,
+    };
   },
 };
 
