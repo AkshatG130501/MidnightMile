@@ -4,16 +4,17 @@
  * Maintains original button styling and position
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
+import { Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
-import { AICompanionService } from '../services/AICompanionService';
+  COLORS,
+  FONTS,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+} from "../constants/theme";
+import { AICompanionService } from "../services/AICompanionService";
 
 export default function AICompanionInterface({
   isActive,
@@ -39,7 +40,14 @@ export default function AICompanionInterface({
       isNavigating,
       nearbySpots,
     });
-  }, [currentLocation, selectedRoute, nextTurn, routeProgress, isNavigating, nearbySpots]);
+  }, [
+    currentLocation,
+    selectedRoute,
+    nextTurn,
+    routeProgress,
+    isNavigating,
+    nearbySpots,
+  ]);
 
   // Handle AI companion activation/deactivation
   useEffect(() => {
@@ -68,15 +76,15 @@ export default function AICompanionInterface({
           AICompanionService.performSafetyCheckIn();
           setLastInteractionTime(Date.now());
         }
-      }, 60000); // Check every minute
+      }, 120000); // Check every minute
 
       return () => clearInterval(checkInInterval);
     }
   }, [isActive, isNavigating, lastInteractionTime]);
 
   const initializeCompanion = async () => {
-    console.log('🤖 Initializing AI Companion Interface...');
-    
+    console.log("🤖 Initializing AI Companion Interface...");
+
     const initialized = await AICompanionService.initialize();
     if (initialized) {
       setIsListening(true);
@@ -86,8 +94,8 @@ export default function AICompanionInterface({
   };
 
   const deactivateCompanion = async () => {
-    console.log('🤖 Deactivating AI Companion Interface...');
-    
+    console.log("🤖 Deactivating AI Companion Interface...");
+
     setIsListening(false);
     setIsRecording(false);
     await AICompanionService.stopListening();
@@ -104,7 +112,7 @@ export default function AICompanionInterface({
         // Stop recording and process
         const audioUri = await AICompanionService.stopRecording();
         setIsRecording(false);
-        
+
         if (audioUri) {
           // In a real implementation, you'd send this to a speech-to-text service
           // For now, we'll simulate user interaction with common questions
@@ -114,9 +122,11 @@ export default function AICompanionInterface({
             "Am I safe?",
             "How much further?",
           ];
-          const simulatedUserInput = responses[Math.floor(Math.random() * responses.length)];
-          const response = AICompanionService.generateContextualResponse(simulatedUserInput);
-          
+          const simulatedUserInput =
+            responses[Math.floor(Math.random() * responses.length)];
+          const response =
+            AICompanionService.generateContextualResponse(simulatedUserInput);
+
           await AICompanionService.speak(response);
           setLastInteractionTime(Date.now());
         }
@@ -126,7 +136,7 @@ export default function AICompanionInterface({
         if (recording) {
           setIsRecording(true);
           await AICompanionService.speak("I'm listening...");
-          
+
           // Auto-stop recording after 5 seconds for demo
           setTimeout(async () => {
             if (isRecording) {
@@ -135,24 +145,34 @@ export default function AICompanionInterface({
           }, 5000);
         } else {
           // Recording failed, provide fallback interaction
-          console.log('🎤 Recording failed, providing fallback response');
-          const fallbackResponse = AICompanionService.generateContextualResponse("How can you help me?");
+          console.log("🎤 Recording failed, providing fallback response");
+          const fallbackResponse =
+            AICompanionService.generateContextualResponse(
+              "How can you help me?"
+            );
           await AICompanionService.speak(fallbackResponse);
           setLastInteractionTime(Date.now());
         }
       }
     } catch (error) {
-      console.error('❌ Voice interaction error:', error);
+      console.error("❌ Voice interaction error:", error);
       setIsRecording(false);
-      
+
       // Provide fallback response instead of just showing error
       try {
-        const fallbackResponse = AICompanionService.generateContextualResponse("I'm having trouble with voice input");
-        await AICompanionService.speak("I'm having trouble with voice input, but I'm still here to help you. How can I assist you?");
+        const fallbackResponse = AICompanionService.generateContextualResponse(
+          "I'm having trouble with voice input"
+        );
+        await AICompanionService.speak(
+          "I'm having trouble with voice input, but I'm still here to help you. How can I assist you?"
+        );
         setLastInteractionTime(Date.now());
       } catch (speechError) {
-        console.error('❌ Fallback speech error:', speechError);
-        Alert.alert('AI Companion Error', 'Voice features are temporarily unavailable, but I can still provide navigation assistance.');
+        console.error("❌ Fallback speech error:", speechError);
+        Alert.alert(
+          "AI Companion Error",
+          "Voice features are temporarily unavailable, but I can still provide navigation assistance."
+        );
       }
     }
   };
@@ -170,10 +190,7 @@ export default function AICompanionInterface({
 
   return (
     <TouchableOpacity
-      style={[
-        styles.companionButton,
-        isActive && styles.companionButtonActive,
-      ]}
+      style={[styles.companionButton, isActive && styles.companionButtonActive]}
       onPress={handlePress}
       onLongPress={handleVoiceInteraction}
     >
@@ -183,10 +200,7 @@ export default function AICompanionInterface({
         color={isActive ? COLORS.white : COLORS.mutedTeal}
       />
       <Text
-        style={[
-          styles.companionText,
-          isActive && styles.companionTextActive,
-        ]}
+        style={[styles.companionText, isActive && styles.companionTextActive]}
       >
         {isRecording ? "Recording" : isActive ? "AI On" : "AI Off"}
       </Text>

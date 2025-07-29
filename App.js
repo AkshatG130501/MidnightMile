@@ -16,6 +16,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ContactsScreen from "./src/screens/ContactsScreen";
 import SafeSpotsScreen from "./src/screens/SafeSpotsScreen";
 import QuickHelpScreen from "./src/screens/QuickHelpScreen";
+import SimpleAudioRecorderTest from "./src/screens/SimpleAudioRecorderTest";
 
 // Import constants and context
 import { COLORS } from "./src/constants/theme";
@@ -43,6 +44,8 @@ function MainTabs() {
               : "shield-checkmark-outline";
           } else if (route.name === "Quick Help") {
             iconName = focused ? "medical" : "medical-outline";
+          } else if (route.name === "Audio Test") {
+            iconName = focused ? "mic" : "mic-outline";
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -63,6 +66,7 @@ function MainTabs() {
       <Tab.Screen name="Contacts" component={ContactsScreen} />
       <Tab.Screen name="Safe Spots" component={SafeSpotsScreen} />
       <Tab.Screen name="Quick Help" component={QuickHelpScreen} />
+      <Tab.Screen name="Audio Test" component={SimpleAudioRecorderTest} />
     </Tab.Navigator>
   );
 }
