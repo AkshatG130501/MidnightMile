@@ -1,43 +1,39 @@
-/**
- * AICompanionInterface Component
- * Provides the UI interface for the AI companion with voice controls
- * Maintains original button styling and position
- */
-
-import React, { useState, useEffect, useRef } from "react";
-import { Text, TouchableOpacity, StyleSheet, Alert, Animated } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import React, { useState, useRef, useEffect } from "react";
 import {
-  COLORS,
-  FONTS,
-  SPACING,
-  BORDER_RADIUS,
-  SHADOWS,
-} from "../constants/theme";
-import { AICompanionService } from "../services/AICompanionService";
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Animated,
+} from "react-native";
+import { Audio } from "expo-av";
+import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "../constants/theme";
 import { SpeechToTextService } from "../services/SpeechToTextService";
 import { IntelligentAIService } from "../services/IntelligentAIService";
+import { ElevenLabsTTSService } from "../services/ElevenLabsTTSService";
+import { AICompanionService } from "../services/AICompanionService";
 
-export default function AICompanionInterface({
-  isActive,
-  onToggle,
-  currentLocation,
-  selectedRoute,
-  nextTurn,
-  routeProgress,
-  isNavigating,
-  nearbySpots,
-}) {
-  const [isListening, setIsListening] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
+export default function SimpleAudioRecorder({ style, currentLocation, selectedRoute }) {
   const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedURI, setRecordedURI] = useState(null);
   const [hasPermission, setHasPermission] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAISpeaking, setIsAISpeaking] = useState(false);
 
   const spinValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    checkPermissions();
+    initializeServices();
+    return () => {
+      // Cleanup on unmount
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+    };
+  }, []);
 
   // Animation for processing state
   useEffect(() => {
@@ -56,12 +52,6 @@ export default function AICompanionInterface({
     }
   }, [isProcessing, spinValue]);
 
-  // Check permissions
-  useEffect(() => {
-    checkPermissions();
-    initializeServices();
-  }, []);
-
   const initializeServices = async () => {
     try {
       // Initialize STT service
@@ -70,7 +60,10 @@ export default function AICompanionInterface({
       // Initialize AI service
       IntelligentAIService.initialize();
       
-      console.log("✅ All AI services initialized for AICompanionInterface");
+      // Initialize TTS service
+      ElevenLabsTTSService.initializeFromConfig();
+      
+      console.log("✅ All AI services initialized for SimpleAudioRecorder");
     } catch (error) {
       console.error("❌ Failed to initialize AI services:", error);
     }
@@ -94,86 +87,7 @@ export default function AICompanionInterface({
     }
   };
 
-  // Update AI context when props change
-  useEffect(() => {
-    AICompanionService.updateContext({
-      currentLocation,
-      selectedRoute,
-      nextTurn,
-      routeProgress,
-      isNavigating,
-      nearbySpots,
-    });
-  }, [
-    currentLocation,
-    selectedRoute,
-    nextTurn,
-    routeProgress,
-    isNavigating,
-    nearbySpots,
-  ]);
-
-  // Handle AI companion activation/deactivation
-  useEffect(() => {
-    if (isActive) {
-      initializeCompanion();
-    } else {
-      deactivateCompanion();
-    }
-  }, [isActive]);
-
-  // Cleanup only on component unmount
-  useEffect(() => {
-    return () => {
-      // Cleanup on unmount only
-      if (recording) {
-        recording.stopAndUnloadAsync();
-      }
-      AICompanionService.cleanup();
-    };
-  }, []); // Empty dependency array ensures this only runs on unmount
-
-  // Periodic safety check-ins
-  useEffect(() => {
-    if (isActive && isNavigating) {
-      const checkInInterval = setInterval(() => {
-        const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-        // Check in every 5 minutes during navigation
-        if (timeSinceLastInteraction > 5 * 60 * 1000) {
-          AICompanionService.performSafetyCheckIn();
-          setLastInteractionTime(Date.now());
-        }
-      }, 120000); // Check every minute
-
-      return () => clearInterval(checkInInterval);
-    }
-  }, [isActive, isNavigating, lastInteractionTime]);
-
-  const initializeCompanion = async () => {
-    console.log("🤖 Initializing AI Companion Interface...");
-
-    const initialized = await AICompanionService.initialize();
-    if (initialized) {
-      setIsListening(true);
-      await AICompanionService.startListening();
-      setLastInteractionTime(Date.now());
-    }
-  };
-
-  const deactivateCompanion = async () => {
-    console.log("🤖 Deactivating AI Companion Interface...");
-
-    setIsListening(false);
-    setIsRecording(false);
-    await AICompanionService.stopListening();
-  };
-
-  const handleVoiceInteraction = async () => {
-    if (!isActive) {
-      onToggle();
-      return;
-    }
-
+  const toggleRecording = async () => {
     if (!hasPermission) {
       await checkPermissions();
       return;
@@ -209,6 +123,7 @@ export default function AICompanionInterface({
 
       setRecording(newRecording);
       setIsRecording(true);
+      setRecordedURI(null); // Clear previous recording
     } catch (error) {
       console.error("Failed to start recording:", error);
       Alert.alert(
@@ -228,6 +143,7 @@ export default function AICompanionInterface({
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
 
+      setRecordedURI(uri);
       setRecording(null);
       setIsRecording(false);
       setIsProcessing(true);
@@ -263,7 +179,7 @@ export default function AICompanionInterface({
         currentLocation,
         selectedRoute,
         userInput: transcribedText,
-        isNavigating,
+        isNavigating: !!selectedRoute,
         timeOfDay: new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"
       };
 
@@ -294,7 +210,6 @@ export default function AICompanionInterface({
       }
 
       setIsAISpeaking(false);
-      setLastInteractionTime(Date.now());
       
       // Resume AI speech after the response is complete
       AICompanionService.resumeAISpeechAfterRecording();
@@ -311,115 +226,88 @@ export default function AICompanionInterface({
     }
   };
 
-  const handlePress = () => {
-    if (!isActive) {
-      onToggle();
-    } else {
-      // Provide quick status update
-      const response = AICompanionService.generateContextualResponse();
-      AICompanionService.speak(response);
-      setLastInteractionTime(Date.now());
-    }
-  };
-
   return (
-    <TouchableOpacity
-      style={[
-        styles.companionButton, 
-        isActive && styles.companionButtonActive,
-        isRecording && styles.companionButtonRecording,
-        isProcessing && styles.companionButtonProcessing,
-        isAISpeaking && styles.companionButtonSpeaking,
-      ]}
-      onPress={handlePress}
-      onLongPress={handleVoiceInteraction}
-      disabled={isProcessing || isAISpeaking}
-    >
-      <Animated.View
+    <View style={[styles.container, style]}>
+      {/* Microphone Button */}
+      <TouchableOpacity
         style={[
-          isProcessing && {
-            transform: [{
-              rotate: spinValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0deg', '360deg'],
-              }),
-            }],
-          },
+          styles.micButton,
+          isRecording && styles.micButtonRecording,
+          isProcessing && styles.micButtonProcessing,
+          isAISpeaking && styles.micButtonSpeaking,
         ]}
+        onPress={toggleRecording}
+        disabled={isProcessing || isAISpeaking}
       >
-        <Ionicons
-          name={
-            isProcessing 
-              ? "sync" 
-              : isAISpeaking 
-                ? "volume-high" 
-                : isRecording 
-                  ? "stop" 
-                  : isActive 
-                    ? "mic" 
-                    : "mic-off"
-          }
-          size={24}
-          color={isActive || isRecording || isProcessing || isAISpeaking ? COLORS.white : COLORS.mutedTeal}
-        />
-      </Animated.View>
-      <Text
-        style={[styles.companionText, isActive && styles.companionTextActive]}
-      >
-        {isProcessing 
-          ? "Processing" 
-          : isAISpeaking 
-            ? "Speaking" 
-            : isRecording 
-              ? "Recording" 
-              : isActive 
-                ? "AI On" 
-                : "AI Off"}
-      </Text>
-    </TouchableOpacity>
+        <Animated.View
+          style={[
+            isProcessing && {
+              transform: [{
+                rotate: spinValue.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '360deg'],
+                }),
+              }],
+            },
+          ]}
+        >
+          <Ionicons
+            name={
+              isProcessing 
+                ? "sync" 
+                : isAISpeaking 
+                  ? "volume-high" 
+                  : isRecording 
+                    ? "stop" 
+                    : "mic"
+            }
+            size={24}
+            color={
+              isRecording || isProcessing || isAISpeaking 
+                ? COLORS.white 
+                : COLORS.deepNavy
+            }
+          />
+        </Animated.View>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  companionButton: {
-    position: "absolute",
-    top: SPACING.xl * 4 + 80, // Position below SOS button (70px height + 10px spacing)
-    right: SPACING.md,
-    backgroundColor: COLORS.warmBeige,
-    borderWidth: 2,
-    borderColor: COLORS.mutedTeal,
-    width: 70,
-    height: 70,
-    borderRadius: BORDER_RADIUS.full,
-    justifyContent: "center",
+  container: {
     alignItems: "center",
-    zIndex: 1000, // Ensure button appears above other elements
-    elevation: 5, // Android elevation for visibility
-    ...SHADOWS.medium,
+    justifyContent: "center",
+    padding: 0,
   },
-  companionButtonActive: {
-    backgroundColor: COLORS.mutedTeal,
-    borderColor: COLORS.mutedTeal,
+  micButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.warmBeige,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: COLORS.deepNavy,
+    shadowColor: COLORS.deepNavy,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  companionButtonRecording: {
+  micButtonRecording: {
     backgroundColor: COLORS.softCoral,
     borderColor: COLORS.softCoral,
   },
-  companionButtonProcessing: {
+  micButtonProcessing: {
     backgroundColor: COLORS.safetyAmber,
     borderColor: COLORS.safetyAmber,
   },
-  companionButtonSpeaking: {
+  micButtonSpeaking: {
     backgroundColor: COLORS.mutedTeal,
     borderColor: COLORS.mutedTeal,
-  },
-  companionText: {
-    color: COLORS.mutedTeal,
-    fontSize: FONTS.sizes.small,
-    fontWeight: FONTS.weights.semibold,
-    marginTop: 2,
-  },
-  companionTextActive: {
-    color: COLORS.white,
   },
 });

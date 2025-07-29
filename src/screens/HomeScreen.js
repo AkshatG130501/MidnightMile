@@ -638,7 +638,10 @@ export default function HomeScreen() {
     setRouteProgress(progress);
 
     // AI Companion: Provide proactive navigation updates
-    if (isAICompanionActive && Math.floor(progress / 25) > Math.floor(previousProgress / 25)) {
+    if (
+      isAICompanionActive &&
+      Math.floor(progress / 25) > Math.floor(previousProgress / 25)
+    ) {
       AICompanionService.provideNavigationUpdate();
     }
 
@@ -1001,12 +1004,13 @@ export default function HomeScreen() {
 
     return {
       instruction: currentStep.html_instructions.replace(/<[^>]*>/g, ""),
-      distance: distanceToNextStep > 0 
-        ? distanceToNextStep < 1000 
-          ? `${Math.round(distanceToNextStep)}m`
-          : `${(distanceToNextStep / 1000).toFixed(1)}km`
-        : "nearby",
-      maneuver: currentStep.maneuver || "continue"
+      distance:
+        distanceToNextStep > 0
+          ? distanceToNextStep < 1000
+            ? `${Math.round(distanceToNextStep)}m`
+            : `${(distanceToNextStep / 1000).toFixed(1)}km`
+          : "nearby",
+      maneuver: currentStep.maneuver || "continue",
     };
   };
 
@@ -1622,7 +1626,7 @@ export default function HomeScreen() {
       if (durationText) {
         // Extract minutes from duration text (e.g., "15 mins" or "1 hour 30 mins")
         const minutes = parseDurationToMinutes(durationText);
-        arrivalTime = new Date(Date.now() + minutes * 60000);
+        arrivalTime = new Date(Date.now() + minutes * 12000);
         setEstimatedArrival(arrivalTime);
       }
     } catch (error) {

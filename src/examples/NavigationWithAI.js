@@ -124,7 +124,7 @@ export class NavigationWithAI {
       setTimeout(() => {
         console.log(`📍 Navigation update ${index + 1}:`, update);
         this.updateNavigationProgress(update);
-      }, (index + 1) * 60000); // Every 30 seconds
+      }, (index + 1) * 12000); // Every 30 seconds
     });
 
     // End navigation after 2.5 minutes

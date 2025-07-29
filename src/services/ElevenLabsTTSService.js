@@ -16,12 +16,19 @@ export class ElevenLabsTTSService {
   // Initialize from config (auto-detect API key)
   static initializeFromConfig() {
     try {
+      // Debug configuration first
+      const debugInfo = ELEVEN_LABS_CONFIG.debugConfig();
+      console.log("🔍 ElevenLabs initialization debug:", debugInfo);
+
       if (!ELEVEN_LABS_CONFIG.isConfigured()) {
-        console.error("❌ Eleven Labs API key not configured in app.json");
+        console.error("❌ Eleven Labs API key not configured in app.config.js");
+        console.error("- Check that ELEVEN_LABS_API_KEY is set in .env file");
+        console.error("- Verify app.config.js includes the key in extra section");
         return false;
       }
 
       const apiKey = ELEVEN_LABS_CONFIG.getApiKey();
+      console.log("✅ API key loaded successfully:", apiKey.substring(0, 8) + "...");
       return this.initialize(apiKey);
     } catch (error) {
       console.error("❌ Failed to initialize from config:", error.message);
@@ -73,6 +80,43 @@ export class ElevenLabsTTSService {
     } catch (error) {
       console.error("❌ Failed to get voices:", error);
       return [];
+    }
+  }
+
+  // Test API connection
+  static async testConnection() {
+    if (!this.isInitialized) {
+      console.error("❌ Eleven Labs TTS not initialized");
+      return false;
+    }
+
+    try {
+      console.log("🧪 Testing ElevenLabs API connection...");
+      
+      const response = await fetch(`${this.baseURL}/user`, {
+        method: "GET",
+        headers: {
+          "xi-api-key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ API connection test failed:");
+        console.error("- Status:", response.status);
+        console.error("- Response:", errorText);
+        return false;
+      }
+
+      const userData = await response.json();
+      console.log("✅ API connection successful!");
+      console.log("- User subscription:", userData.subscription?.tier || 'Free');
+      console.log("- Characters remaining:", userData.subscription?.character_count || 'Unknown');
+      return true;
+    } catch (error) {
+      console.error("❌ API connection test error:", error);
+      return false;
     }
   }
 
@@ -132,7 +176,19 @@ export class ElevenLabsTTSService {
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error("❌ Eleven Labs TTS API Error:");
+        console.error("- Status:", response.status);
+        console.error("- Status Text:", response.statusText);
+        console.error("- Response:", errorText);
+        
+        if (response.status === 401) {
+          console.error("🔑 Authentication failed - check API key");
+          console.error("- API key starts with 'sk_':", this.apiKey?.startsWith('sk_'));
+          console.error("- API key length:", this.apiKey?.length);
+        }
+        
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
       // Get audio data as array buffer
