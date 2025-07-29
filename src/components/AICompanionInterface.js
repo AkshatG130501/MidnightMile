@@ -94,23 +94,52 @@ export default function AICompanionInterface({
     }
   };
 
-  // Update AI context when props change
+  // Update AI context when props change - with debouncing and significant change detection
   useEffect(() => {
-    AICompanionService.updateContext({
-      currentLocation,
-      selectedRoute,
-      nextTurn,
-      routeProgress,
-      isNavigating,
-      nearbySpots,
-    });
+    const updateContext = () => {
+      AICompanionService.updateContext({
+        currentLocation,
+        selectedRoute,
+        nextTurn,
+        routeProgress,
+        isNavigating,
+        nearbySpots,
+      });
+    };
+
+    // Only update if there are significant changes
+    const hasSignificantLocationChange = (() => {
+      if (!currentLocation?.coords) return false;
+      
+      const lastContext = AICompanionService.context;
+      if (!lastContext.currentLocation?.coords) return true;
+      
+      // Calculate distance between old and new location
+      const latDiff = Math.abs(currentLocation.coords.latitude - lastContext.currentLocation.coords.latitude);
+      const lonDiff = Math.abs(currentLocation.coords.longitude - lastContext.currentLocation.coords.longitude);
+      
+      // Only update if moved more than ~10 meters (0.0001 degrees ≈ 11 meters)
+      return latDiff > 0.0001 || lonDiff > 0.0001;
+    })();
+
+    const hasNavigationStateChange = isNavigating !== AICompanionService.context.isNavigating;
+    const hasRouteChange = selectedRoute?.id !== AICompanionService.context.selectedRoute?.id;
+    const hasNextTurnChange = nextTurn?.instruction !== AICompanionService.context.nextTurn?.instruction;
+    
+    // Only update if there are significant changes
+    if (hasSignificantLocationChange || hasNavigationStateChange || hasRouteChange || hasNextTurnChange) {
+      // Debounce context updates to prevent spam
+      const timeoutId = setTimeout(updateContext, 300);
+      return () => clearTimeout(timeoutId);
+    }
   }, [
-    currentLocation,
-    selectedRoute,
-    nextTurn,
+    currentLocation?.coords?.latitude,
+    currentLocation?.coords?.longitude,
+    selectedRoute?.id,
+    nextTurn?.instruction,
     routeProgress,
     isNavigating,
-    nearbySpots,
+    nearbySpots?.length,
   ]);
 
   // Handle AI companion activation/deactivation
