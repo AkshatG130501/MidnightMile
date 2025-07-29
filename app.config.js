@@ -1,0 +1,83 @@
+import "dotenv/config";
+
+export default {
+  expo: {
+    name: "Midnight Mile",
+    slug: "midnightmile",
+    version: "1.0.0",
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    newArchEnabled: true,
+    scheme: "midnightmile",
+    extra: {
+      GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
+      GOOGLE_MAPS_WALKING_RADIUS:
+        parseInt(process.env.GOOGLE_MAPS_WALKING_RADIUS) || 2000,
+      GOOGLE_MAPS_MAX_ROUTES: parseInt(process.env.GOOGLE_MAPS_MAX_ROUTES) || 3,
+      ELEVEN_LABS_API_KEY: process.env.ELEVEN_LABS_API_KEY,
+      ELEVEN_LABS_VOICE_ID: process.env.ELEVEN_LABS_VOICE_ID,
+      eas: {
+        projectId: "a22af39f-159f-41cd-aee5-5b40c4f9f774",
+      },
+    },
+    splash: {
+      image: "./assets/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff",
+    },
+    ios: {
+      supportsTablet: true,
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription:
+          "This app needs access to your location to provide safe navigation and emergency features.",
+        NSLocationAlwaysAndWhenInUseUsageDescription:
+          "This app needs access to your location to provide safe navigation and emergency features.",
+        NSMicrophoneUsageDescription:
+          "This app needs access to your microphone for the AI companion feature to detect distress sounds.",
+        NSContactsUsageDescription:
+          "This app needs access to your contacts to add trusted contacts for emergency notifications.",
+      },
+      config: {
+        googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+      },
+    },
+    android: {
+      package: "com.midnightmile.app",
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#ffffff",
+      },
+      edgeToEdgeEnabled: true,
+      permissions: [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "READ_CONTACTS",
+        "CALL_PHONE",
+        "SEND_SMS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.SEND_SMS",
+      ],
+      config: {
+        googleMaps: {
+          apiKey: process.env.GOOGLE_MAPS_API_KEY,
+        },
+      },
+    },
+    web: {
+      favicon: "./assets/favicon.png",
+    },
+    plugins: [
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission:
+            "Allow Midnight Mile to use your location for safe navigation and emergency features.",
+        },
+      ],
+      "expo-web-browser",
+    ],
+  },
+};

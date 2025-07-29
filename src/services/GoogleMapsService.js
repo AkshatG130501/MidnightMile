@@ -2,10 +2,7 @@ import * as Location from "expo-location";
 import Constants from "expo-constants";
 
 export class GoogleMapsService {
-  static apiKey =
-    Constants.expoConfig?.extra?.GOOGLE_MAPS_API_KEY ||
-    process.env.GOOGLE_MAPS_API_KEY ||
-    "YOUR_GOOGLE_MAPS_API_KEY_HERE";
+  static apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   // Get directions between two points with alternative routes
   static async getDirections(
